@@ -1,0 +1,30 @@
+# requirements.txt — The Harvest Squeeze
+# Install: pip install -r requirements.txt
+
+# Core data science
+pandas>=2.1.0
+numpy>=1.26.0
+scipy>=1.11.0
+
+# Geospatial
+geopandas>=0.14.0
+pyproj>=3.6.0
+
+# County FIPS / centroid fallback (no internet required)
+addfips>=0.4.0
+
+# API clients and utilities
+requests>=2.31.0
+python-dotenv>=1.0.0
+pyarrow>=14.0.0
+
+# Streamlit and visualization
+streamlit>=1.30.0
+pydeck>=0.8.0
+plotly>=5.18.0
+
+# Google Earth Engine (optional; requires ee.Authenticate() on first use)
+earthengine-api>=0.1.380
+
+# Excel reading for USSoyValueChain.xlsx
+openpyxl>=3.1.0
