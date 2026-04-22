@@ -74,7 +74,7 @@ with st.sidebar:
         default=["IOWA","ILLINOIS","MINNESOTA","NEBRASKA"],
         key="cp_multi",
     )
-    run_btn = st.button("Load Data", type="primary", use_container_width=True)
+    run_btn = st.button("Load Data", type="primary", width="stretch")
 
 has_usda = bool(os.getenv("USDA_API_KEY"))
 
@@ -201,13 +201,16 @@ with left_col:
                         y=bench, line_dash="dash", line_color="#9a9a90",
                         annotation_text=f"5-yr avg: {bench}%",
                         annotation_position="bottom right", annotation_font_size=9,
-                    )
+                    )     
             fig_p.update_layout(
-                **base, height=310,
-                yaxis=dict(range=[0,105], ticksuffix="%"),
-                legend=dict(orientation="h", y=-0.32, font_size=9),
+                **{k: v for k, v in base.items() if k != "legend"},
+                height=310,
+                yaxis=dict(range=[0, 105], ticksuffix="%"),
             )
-            st.plotly_chart(fig_p, use_container_width=True)
+            fig_p.update_layout(
+                legend=dict(orientation="h", y=-0.32, font=dict(size=9))
+            )
+            st.plotly_chart(fig_p, width="stretch")
 
     # CCI trend
     if cci_df is not None and not cci_df.empty:
@@ -235,11 +238,14 @@ with left_col:
         fig_cci.add_hline(y=62, line_dash="dot", line_color="#c8c4be",
                           annotation_text="Historical avg ~62", annotation_font_size=8)
         fig_cci.update_layout(
-            **base, height=275,
-            yaxis=dict(range=[0,105], title="Index / %"),
-            legend=dict(orientation="h", y=-0.3, font_size=9),
+            **{k: v for k, v in base.items() if k != "legend"},
+            height=310,
+            yaxis=dict(range=[0, 105], ticksuffix="%"),
         )
-        st.plotly_chart(fig_cci, use_container_width=True)
+        fig_cci.update_layout(
+            legend=dict(orientation="h", y=-0.32, font=dict(size=9))
+        )
+        st.plotly_chart(fig_cci, width="stretch")
 
 with right_col:
     # Condition breakdown — horizontal bar
@@ -269,7 +275,7 @@ with right_col:
             **base, height=255, showlegend=False,
             xaxis=dict(range=[0,65], ticksuffix="%"),
         )
-        st.plotly_chart(fig_cd, use_container_width=True)
+        st.plotly_chart(fig_cd, width="stretch")
 
     # Multi-state planting pace
     multi_df = st.session_state.cp_multi_df
@@ -288,11 +294,14 @@ with right_col:
                          annotation_text=f"Avg benchmark: {avg_bench:.0f}%",
                          annotation_font_size=8)
         fig_ms.update_layout(
-            **base, height=265,
-            yaxis=dict(range=[0,105], ticksuffix="%"),
-            legend=dict(orientation="h", y=-0.32, font_size=9),
+            **{k: v for k, v in base.items() if k != "legend"},
+            height=310,
+            yaxis=dict(range=[0, 105], ticksuffix="%"),
         )
-        st.plotly_chart(fig_ms, use_container_width=True)
+        fig_ms.update_layout(
+            legend=dict(orientation="h", y=-0.32, font=dict(size=9))
+        )
+        st.plotly_chart(fig_ms, width="stretch")
 
         # Pace score table
         section_label("Planting Pace vs. 5-Year Average")
@@ -315,7 +324,7 @@ with right_col:
                     "Benchmark":    "{:.0f}%",
                     "Delta (pp)":   "{:+.1f}",
                 }),
-                use_container_width=True, height=205,
+                width="stretch", height=205,
             )
 
 st.divider()
@@ -364,6 +373,6 @@ fig_mod.update_layout(
     yaxis=dict(title="Yield modifier (x)", range=[0.82, 1.15], tickformat=".0%"),
     showlegend=False,
 )
-st.plotly_chart(fig_mod, use_container_width=True)
+st.plotly_chart(fig_mod, width="stretch")
 
 footer()

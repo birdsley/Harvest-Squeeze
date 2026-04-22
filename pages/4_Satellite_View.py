@@ -85,8 +85,8 @@ with st.sidebar:
     )
 
     st.markdown("")
-    run_btn  = st.button("Fetch Satellite Data", type="primary", use_container_width=True)
-    demo_btn = st.button("Load Demo Data",        use_container_width=True)
+    run_btn  = st.button("Fetch Satellite Data", type="primary", width="stretch")
+    demo_btn = st.button("Load Demo Data",        width="stretch")
 
 # ---------------------------------------------------------------------------
 # Cached loaders
@@ -334,7 +334,7 @@ with map_col:
                 },
             },
             map_style="mapbox://styles/mapbox/light-v11",
-        ), use_container_width=True)
+        ), width="stretch")
 
         # NDVI legend
         leg = st.columns(5)
@@ -373,7 +373,7 @@ with chart_col:
                                annotation_text="Healthy (0.70+)",
                                annotation_font_size=9)
             fig_ndvi.update_layout(**base, height=220, showlegend=False)
-            st.plotly_chart(fig_ndvi, use_container_width=True)
+            st.plotly_chart(fig_ndvi, width="stretch")
 
             if "ndvi_category" in df.columns:
                 cat_vc = df["ndvi_category"].value_counts()
@@ -388,7 +388,7 @@ with chart_col:
                     **base, height=185, showlegend=False,
                     xaxis_title="Number of counties",
                 )
-                st.plotly_chart(fig_cat, use_container_width=True)
+                st.plotly_chart(fig_cat, width="stretch")
 
     with t2:
         if has_smap:
@@ -402,7 +402,7 @@ with chart_col:
                                line_width=0, annotation_text="Optimal zone",
                                annotation_font_size=9)
             fig_smap.update_layout(**base, height=210, showlegend=False)
-            st.plotly_chart(fig_smap, use_container_width=True)
+            st.plotly_chart(fig_smap, width="stretch")
 
             if "smap_stress_flag" in df.columns:
                 stress_vc = df["smap_stress_flag"].value_counts()
@@ -424,7 +424,7 @@ with chart_col:
                     **base, height=200, showlegend=False,
                     xaxis_title="Number of counties",
                 )
-                st.plotly_chart(fig_st, use_container_width=True)
+                st.plotly_chart(fig_st, width="stretch")
 
     with t3:
         if has_mod:
@@ -438,7 +438,7 @@ with chart_col:
                               annotation_text="Trend yield baseline",
                               annotation_font_size=9)
             fig_mod.update_layout(**base, height=195, showlegend=False)
-            st.plotly_chart(fig_mod, use_container_width=True)
+            st.plotly_chart(fig_mod, width="stretch")
 
             # Scatter: NDVI vs yield modifier
             if has_ndvi:
@@ -456,7 +456,7 @@ with chart_col:
                     **base, height=200,
                     coloraxis_colorbar=dict(title="Net Margin ($/ac)", thickness=10),
                 )
-                st.plotly_chart(fig_nv, use_container_width=True)
+                st.plotly_chart(fig_nv, width="stretch")
 
 st.divider()
 
@@ -506,12 +506,12 @@ if "net_margin_per_acre" in df.columns and has_mod:
 
     styled = deviated.style
     if "yield_modifier" in deviated.columns:
-        styled = styled.applymap(_hl_mod, subset=["yield_modifier"])
+        styled = styled.map(_hl_mod, subset=["yield_modifier"])
     if "risk_tier" in deviated.columns:
-        styled = styled.applymap(_hl_tier, subset=["risk_tier"])
+        styled = styled.map(_hl_tier, subset=["risk_tier"])
     styled = styled.format(fmt)
 
-    st.dataframe(styled, use_container_width=True, height=320)
+    st.dataframe(styled, width="stretch", height=320)
 
     st.download_button(
         "Download Satellite County Data",

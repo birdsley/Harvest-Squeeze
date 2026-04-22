@@ -3,6 +3,10 @@ pages/1_National_Risk_View.py
 ------------------------------
 National corn belt profitability risk overview.
 Six-state simultaneous scan with choropleth and risk distribution charts.
+
+v2.4 fixes:
+  - plotly update_layout duplicate 'margin' and 'legend' kwargs resolved
+  - use_container_width → width="stretch" (Streamlit 1.56+ migration)
 """
 
 import os
@@ -176,11 +180,11 @@ if st.session_state.natl_df is not None:
 
     k1,k2,k3,k4,k5,k6 = st.columns(6)
     k1.metric("Counties Modeled",    n)
-    k2.metric("High Risk (6-state)", f"{pct_high:.1f}%")
-    k3.metric("Elevated (6-state)",  f"{pct_elev:.1f}%")
-    k4.metric("Healthy (6-state)",   f"{pct_hlthy:.1f}%")
-    k5.metric("Most At-Risk State",  worst)
-    k6.metric("Strongest State",     best)
+    k2.metric("High Risk (6-St.)", f"{pct_high:.1f}%",  help="Share of counties in loss territory across all six states")
+    k3.metric("Elevated (6-St.)",  f"{pct_elev:.1f}%",  help="Share of counties with razor-thin margins (NMS 0-5%)")
+    k4.metric("Healthy (6-St.)",   f"{pct_hlthy:.1f}%", help="Share of counties with healthy margins (NMS > 12%)")
+    k5.metric("Most At-Risk",       worst,               help="State with lowest mean Net Margin Score")
+    k6.metric("Strongest State",     best,                help="State with highest mean Net Margin Score")
     st.divider()
 
     # Choropleth + stacked bar
@@ -212,8 +216,10 @@ if st.session_state.natl_df is not None:
                 "median_crusher_dist":  "Median Crusher Dist (mi)",
             },
         )
+        # v2.4 FIX: strip margin/legend from base to avoid duplicate kwarg TypeError
+        _base_clean = {k: v for k, v in base.items() if k not in ("margin", "legend")}
         fig_map.update_layout(
-            **base,
+            **_base_clean,
             height=400,
             margin=dict(l=0, r=0, t=10, b=0),
             coloraxis_colorbar=dict(
@@ -222,7 +228,7 @@ if st.session_state.natl_df is not None:
             ),
             geo=dict(bgcolor="rgba(0,0,0,0)", lakecolor="#f8f7f4"),
         )
-        st.plotly_chart(fig_map, use_container_width=True)
+        st.plotly_chart(fig_map, width="stretch", config={"displayModeBar": False})
 
     with bar_col:
         section_label("Risk Distribution by State")
@@ -246,12 +252,14 @@ if st.session_state.natl_df is not None:
             category_orders={"tier": risk_order},
             labels={"pct": "% of counties", "state": "", "tier": "Risk Tier"},
         )
+        # v2.4 FIX: strip legend from base to avoid duplicate kwarg TypeError
+        _base_no_legend = {k: v for k, v in base.items() if k != "legend"}
         fig_bar.update_layout(
-            **base, height=400, barmode="stack",
+            **_base_no_legend, height=400, barmode="stack",
             xaxis=dict(range=[0,100], ticksuffix="%"),
             legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0, font_size=9),
         )
-        st.plotly_chart(fig_bar, use_container_width=True)
+        st.plotly_chart(fig_bar, width="stretch", config={"displayModeBar": False})
 
     st.divider()
 
@@ -277,11 +285,13 @@ if st.session_state.natl_df is not None:
         annotation_text=f"Distance penalty >{LOGISTICS.distance_threshold_miles:.0f} mi",
         annotation_font_size=9,
     )
+    # v2.4 FIX: strip legend from base to avoid duplicate kwarg TypeError
+    _base_no_legend = {k: v for k, v in base.items() if k != "legend"}
     fig_sc.update_layout(
-        **base, height=360,
+        **_base_no_legend, height=360,
         legend=dict(orientation="h", yanchor="top", y=-0.18, font_size=9),
     )
-    st.plotly_chart(fig_sc, use_container_width=True)
+    st.plotly_chart(fig_sc, width="stretch", config={"displayModeBar": False})
 
     st.divider()
 
@@ -314,7 +324,7 @@ if st.session_state.natl_df is not None:
             "Median Crusher (mi)":     "{:.0f}",
             "Median Transport ($/bu)": "${:.3f}",
         }),
-        use_container_width=True, height=260,
+        width="stretch", height=260,
     )
 
     st.download_button(

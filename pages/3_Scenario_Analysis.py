@@ -3,6 +3,10 @@ pages/3_Scenario_Analysis.py
 -----------------------------
 Sensitivity analysis: tornado chart, price heat map,
 breakeven calculator, Monte Carlo simulation.
+
+v2.4 fixes:
+  - plotly update_layout duplicate 'margin' and 'legend' kwargs resolved
+  - use_container_width → width="stretch" (Streamlit 1.56+ migration)
 """
 
 import warnings
@@ -239,15 +243,17 @@ with t1:
         textposition="outside", textfont=dict(size=9, family="IBM Plex Mono"),
     ))
     fig_t.add_vline(x=0, line_width=1.5, line_color="#0f2419")
+    # v2.4 FIX: strip margin AND legend from base to avoid duplicate kwarg TypeError
+    _base_clean = {k: v for k, v in base.items() if k not in ("margin", "legend")}
     fig_t.update_layout(
-        **base,
+        **_base_clean,
         title=f"Base case: median county net margin = ${base_margin:+.0f}/acre",
         height=420, barmode="overlay",
         margin=dict(l=5, r=90, t=50, b=5),
         xaxis=dict(title="Delta vs. base case ($/acre)"),
         legend=dict(orientation="h", y=-0.12, font_size=9),
     )
-    st.plotly_chart(fig_t, use_container_width=True)
+    st.plotly_chart(fig_t, width="stretch", config={"displayModeBar": False})
 
     top3 = torn.sort_values("Span", ascending=False).head(3)["Input"].tolist()
     st.markdown(
@@ -261,7 +267,8 @@ with t2:
     section_label(f"{state_label} — High-Risk County Share by CBOT and Diesel Price")
     st.markdown(
         "<p>Each cell shows the percentage of counties classified as HIGH risk under that "
-        "combination of CBOT price and diesel price. The base scenario is marked with a star.</p>",
+        "combination of CBOT price and diesel price. "
+        "The base scenario is marked with a star.</p>",
         unsafe_allow_html=True,
     )
 
@@ -313,7 +320,7 @@ with t2:
         xaxis_title="CBOT Price ($/bu)",
         yaxis_title="Diesel Price ($/gal)",
     )
-    st.plotly_chart(fig_hm, use_container_width=True)
+    st.plotly_chart(fig_hm, width="stretch", config={"displayModeBar": False})
 
 # ── Breakeven ─────────────────────────────────────────────────────────────────
 with t3:
@@ -342,19 +349,21 @@ with t3:
         fig_be.add_vline(x=base_cbot, line_dash="dash", line_color="#0f2419",
                          annotation_text=f"Current CBOT: ${base_cbot:.2f}",
                          annotation_font_size=9)
+        # v2.4 FIX: strip legend from base
+        _base_no_legend = {k: v for k, v in base.items() if k != "legend"}
         fig_be.update_layout(
-            **base, title="Breakeven CBOT distribution by risk tier",
+            **_base_no_legend, title="Breakeven CBOT distribution by risk tier",
             height=320, legend=dict(orientation="h", y=-0.3, font_size=9),
         )
-        st.plotly_chart(fig_be, use_container_width=True)
+        st.plotly_chart(fig_be, width="stretch", config={"displayModeBar": False})
 
     with c2:
         pct_under = (be_df["breakeven_cbot"] > base_cbot).mean() * 100
         q75       = be_df["breakeven_cbot"].quantile(0.75)
         q50       = be_df["breakeven_cbot"].quantile(0.50)
-        st.metric("Median Breakeven CBOT",   f"${q50:.2f}/bu")
-        st.metric("75th Percentile",          f"${q75:.2f}/bu")
-        st.metric("Pct. Already Underwater",  f"{pct_under:.1f}%")
+        st.metric("Median BE CBOT",   f"${q50:.2f}/bu", help="Median breakeven CBOT price across all counties")
+        st.metric("75th Percentile",   f"${q75:.2f}/bu", help="75th percentile breakeven — 25% of counties need higher prices")
+        st.metric("Already Underwater", f"{pct_under:.1f}%", help="Pct of counties whose breakeven exceeds current CBOT")
 
         st.markdown("<br/>", unsafe_allow_html=True)
         section_label("Worst Breakeven Counties")
@@ -368,7 +377,7 @@ with t3:
                 "Safety Margin":  "${:+.2f}",
                 "Yield (bu/ac)":  "{:.1f}",
             }),
-            use_container_width=True, height=260,
+            width="stretch", height=260,
         )
 
     section_label("Breakeven Price vs. Crusher Distance")
@@ -386,16 +395,19 @@ with t3:
     fig_be_sc.add_hline(y=base_cbot, line_dash="dash", line_color="#0f2419",
                         annotation_text=f"Current CBOT: ${base_cbot:.2f}",
                         annotation_font_size=9)
-    fig_be_sc.update_layout(**base, height=320,
+    # v2.4 FIX: strip legend from base
+    _base_no_legend = {k: v for k, v in base.items() if k != "legend"}
+    fig_be_sc.update_layout(**_base_no_legend, height=320,
                              legend=dict(orientation="h", y=-0.2, font_size=9))
-    st.plotly_chart(fig_be_sc, use_container_width=True)
+    st.plotly_chart(fig_be_sc, width="stretch", config={"displayModeBar": False})
 
 # ── Monte Carlo ───────────────────────────────────────────────────────────────
 with t4:
     section_label(f"Monte Carlo Simulation — Median County ({n_sims:,} Iterations)")
     st.markdown(
         f"<p>Price and cost inputs are drawn from truncated normal distributions "
-        f"representing 2026 planning uncertainty. Results show the probability distribution "
+        f"representing 2026 planning uncertainty. "
+        f"Results show the probability distribution "
         f"of net margin outcomes for the median {state_label} county.</p>",
         unsafe_allow_html=True,
     )
@@ -451,12 +463,14 @@ with t4:
                          annotation_text=f"5th pct: ${p5:.0f}", annotation_font_size=9)
         fig_mc.add_vline(x=p95, line_dash="dot",   line_color="#15803d",
                          annotation_text=f"95th pct: ${p95:.0f}", annotation_font_size=9)
+        # v2.4 FIX: strip legend from base to avoid duplicate kwarg TypeError
+        _base_no_legend = {k: v for k, v in base.items() if k != "legend"}
         fig_mc.update_layout(
-            **base, height=340,
+            **_base_no_legend, height=340,
             title=f"Net margin distribution — {n_sims:,} simulations",
             legend=dict(orientation="h", y=-0.2, font_size=9),
         )
-        st.plotly_chart(fig_mc, use_container_width=True)
+        st.plotly_chart(fig_mc, width="stretch", config={"displayModeBar": False})
 
         fig_sc2 = px.scatter(
             mc_df.sample(min(300, n_sims)),
@@ -468,7 +482,7 @@ with t4:
             **base, height=290,
             title="Net margin vs. CBOT price (color = diesel)",
         )
-        st.plotly_chart(fig_sc2, use_container_width=True)
+        st.plotly_chart(fig_sc2, width="stretch", config={"displayModeBar": False})
 
     with col_b:
         risk_vc = pd.Series(risk_labels).value_counts()
@@ -478,12 +492,14 @@ with t4:
             hole=0.44,
             textfont=dict(size=10, family="IBM Plex Sans"),
         ))
+        # v2.4 FIX: strip legend from base to avoid duplicate kwarg TypeError
+        _base_no_legend = {k: v for k, v in base.items() if k != "legend"}
         fig_pie.update_layout(
-            **base, height=280,
+            **_base_no_legend, height=280,
             title="Simulation risk distribution",
             legend=dict(orientation="v", font_size=9),
         )
-        st.plotly_chart(fig_pie, use_container_width=True)
+        st.plotly_chart(fig_pie, width="stretch", config={"displayModeBar": False})
 
         section_label("Simulation Statistics")
         stats = [

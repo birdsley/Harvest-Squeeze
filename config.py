@@ -4,6 +4,9 @@ config.py
 Central configuration hub for The Harvest Squeeze dashboard.
 All 2026 cost assumptions, API endpoints, and column mappings live here.
 Edit this file to run sensitivity scenarios without touching model logic.
+
+v2.4 fix: FRED series PCU3253113253111 was DISCONTINUED Dec 2014.
+          Updated to PCU325311325311 (industry-level, active through 2026).
 """
 
 from dataclasses import dataclass, field
@@ -192,9 +195,11 @@ class APIConfig:
     usda_agg_level:          str = "COUNTY"
 
     # FRED (St. Louis Fed)
+    # v2.4 FIX: PCU3253113253111 was DISCONTINUED Dec 2014 (zero observations).
+    #           Replaced with PCU325311325311 (industry-level, active thru 2026).
     fred_base_url:           str = "https://api.stlouisfed.org/fred/series/observations"
-    fred_series_fertilizer:  str = "PCU3253113253111"  # PPI: Nitrogenous Fertilizers
-    fred_series_fertilizer_alt: str = "WPU0652"        # PPI: Fertilizers & Ag Chemicals
+    fred_series_fertilizer:  str = "PCU325311325311"   # PPI: Nitrogenous Fertilizer Mfg (industry-level, active)
+    fred_series_fertilizer_alt: str = "WPU0652"        # PPI: Fertilizer Materials (commodity-level fallback)
     fred_observation_start:  str = "2023-01-01"
 
     # EIA (Energy Information Administration)

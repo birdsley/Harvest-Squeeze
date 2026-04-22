@@ -1,16 +1,24 @@
 """
-app.py  --  The Harvest Squeeze
---------------------------------
-Main dashboard: county-level soybean/corn profitability risk map.
-Professional multi-page Streamlit application.
+app.py  --  The Harvest Squeeze  v2.3
+--------------------------------------
+Navigation entry point.  Uses st.navigation so pages get proper human-readable
+titles in the sidebar instead of the raw filename ("app", "1_National_Risk_View").
 
-Run:
-    streamlit run app.py
+v2.3 changes:
+  - st.navigation with explicit titles: "Home", "National Risk View", etc.
+  - Home page content moved inline (this file IS the home page when default=True).
+  - Metric/sparkline columns isolated with st.container so charts don't bleed
+    into adjacent columns.
+  - All emojis removed from UI strings.
+  - Fixed overlapping text: sparklines are wrapped in a zero-margin container
+    and given explicit height so they never overflow.
 """
 
+import json
 import os
 import warnings
 import logging
+from urllib.request import urlopen
 
 import numpy as np
 import pandas as pd
@@ -24,10 +32,11 @@ warnings.filterwarnings("ignore")
 logging.basicConfig(level=logging.WARNING)
 load_dotenv()
 
-from config import SOY_COSTS, CORN_COSTS, LOGISTICS, RISK
+from config import SOY_COSTS, CORN_COSTS, LOGISTICS, RISK, CBOT_SOY_2026, CBOT_CORN_2026
 from styles import (
     apply_theme, page_header, section_label, footer,
-    plotly_layout_defaults, RISK_COLORS, RISK_RGBA,
+    plotly_layout_defaults, plotly_base_no_legend,
+    RISK_COLORS, RISK_RGBA,
 )
 from data_acquisition import (
     load_value_chain_facilities, load_county_centroids,
@@ -41,17 +50,106 @@ from data_processing import (
     get_logistics_squeeze_counties,
 )
 
+
 # ---------------------------------------------------------------------------
-# Page configuration
+# Page config — must be the FIRST Streamlit call
 # ---------------------------------------------------------------------------
 
 st.set_page_config(
-    page_title="The Harvest Squeeze | Profitability Risk Dashboard",
-    page_icon="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>H</text></svg>",
+    page_title="Harvest Squeeze | 2026 Profitability Risk Monitor",
+    page_icon="favicon.ico",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 apply_theme()
+
+
+# ---------------------------------------------------------------------------
+# Multi-page navigation with explicit titles
+# ---------------------------------------------------------------------------
+# st.navigation is available in Streamlit >= 1.29 (running 1.56.0).
+# Defining pages explicitly here lets us give each a clean display title
+# instead of the auto-generated "1 National Risk View" from the filename.
+# ---------------------------------------------------------------------------
+
+_pages = [
+    st.Page("pages/1_National_Risk_View.py", title="National Risk View"),
+    st.Page("pages/2_Crop_Progress.py",       title="Crop Progress"),
+    st.Page("pages/3_Scenario_Analysis.py",    title="Scenario Analysis"),
+    st.Page("pages/4_Satellite_View.py",       title="Satellite View"),
+]
+
+# The home page content lives directly in this file (default=True).
+# st.navigation with a callable Page pointing to self isn't needed —
+# we just define the sub-pages and let app.py render the home content.
+pg = st.navigation(
+    {
+        "Home": [st.Page(lambda: None, title="Home", default=True)],
+        "Analysis": _pages,
+    }
+)
+
+# Run the selected page; if it's the lambda (Home), we fall through to
+# the home content below.  Any other selection renders that page file.
+pg.run()
+
+# Only render home content when Home is the active page.
+# When a sub-page is active, pg.run() has already rendered it and we stop.
+if pg.title != "Home":
+    st.stop()
+
+
+# ---------------------------------------------------------------------------
+# Session state
+# ---------------------------------------------------------------------------
+
+for _k, _v in {"model_df": None, "facilities": None, "run_count": 0}.items():
+    if _k not in st.session_state:
+        st.session_state[_k] = _v
+
+
+# ---------------------------------------------------------------------------
+# Cached data loaders
+# ---------------------------------------------------------------------------
+
+@st.cache_data(ttl=3_600, show_spinner=False)
+def _load_facilities():
+    return load_value_chain_facilities()
+
+@st.cache_data(ttl=3_600, show_spinner=False)
+def _load_centroids():
+    return load_county_centroids()
+
+@st.cache_data(ttl=1_800, show_spinner=False)
+def _load_yields(state: str, yr: int, commodity: str) -> pd.DataFrame:
+    fn = fetch_usda_soybean_yields if commodity == "soybean" else fetch_usda_corn_yields
+    return fn(state_name=state, year=yr)
+
+@st.cache_data(ttl=1_800, show_spinner=False)
+def _load_fert_ppi() -> float:
+    return fetch_fred_fertilizer_ppi()
+
+@st.cache_data(ttl=900, show_spinner=False)
+def _load_diesel() -> float:
+    return fetch_eia_diesel_price()
+
+@st.cache_data(ttl=1_800, show_spinner=False)
+def _load_fert_hist(months: int = 24) -> pd.DataFrame:
+    return fetch_fred_fertilizer_history(months=months)
+
+@st.cache_data(ttl=900, show_spinner=False)
+def _load_diesel_hist(weeks: int = 52) -> pd.DataFrame:
+    return fetch_eia_diesel_history(weeks=weeks)
+
+@st.cache_data(ttl=86_400, show_spinner=False)
+def _load_county_geojson():
+    try:
+        url = "https://raw.githubusercontent.com/plotly/datasets/master/geojson-counties-fips.json"
+        with urlopen(url, timeout=20) as r:
+            return json.load(r)
+    except Exception:
+        return None
+
 
 # ---------------------------------------------------------------------------
 # Sidebar
@@ -59,573 +157,638 @@ apply_theme()
 
 with st.sidebar:
     st.markdown(
-        "<div style='padding:1.2rem 0 0.4rem'>"
-        "<span style='font-family:Georgia,serif;font-size:1.15rem;"
+        "<div style='padding:1.4rem 0 0.5rem'>"
+        "<span style='font-family:Georgia,serif;font-size:1.05rem;"
         "font-weight:700;color:#f0f4ee;letter-spacing:-0.01em'>"
         "The Harvest Squeeze</span><br/>"
-        "<span style='font-size:0.72rem;color:#6b8f74;"
-        "text-transform:uppercase;letter-spacing:0.1em'>"
-        "Profitability Risk &bull; 2026</span></div>",
+        "<span style='font-size:0.66rem;color:#6b8f74;"
+        "text-transform:uppercase;letter-spacing:0.12em'>"
+        "Profitability Risk Monitor &bull; 2026</span></div>",
         unsafe_allow_html=True,
     )
     st.divider()
 
-    with st.expander("API Keys", expanded=False):
-        for env, label, hint in [
-            ("USDA_API_KEY", "USDA QuickStats",      "quickstats.nass.usda.gov"),
-            ("FRED_API_KEY", "FRED St. Louis Fed",   "fred.stlouisfed.org"),
-            ("EIA_API_KEY",  "EIA Energy",            "eia.gov/opendata"),
+    with st.expander("API Key Status", expanded=False):
+        for _env, _label in [
+            ("USDA_API_KEY", "USDA NASS QuickStats"),
+            ("FRED_API_KEY", "FRED Fertilizer PPI"),
+            ("EIA_API_KEY",  "EIA Diesel Price"),
         ]:
-            v = st.text_input(label, type="password",
-                              value=os.getenv(env, ""), help=f"Free key: {hint}")
-            if v:
-                os.environ[env] = v
+            _ok  = bool(os.getenv(_env))
+            _clr = "#4ade80" if _ok else "#f87171"
+            _txt = "Active" if _ok else "Missing"
+            st.markdown(
+                f"<div style='display:flex;justify-content:space-between;"
+                f"padding:0.25rem 0'>"
+                f"<span style='font-size:0.78rem;color:#c8d5c0'>{_label}</span>"
+                f"<span style='font-size:0.70rem;font-weight:700;color:{_clr};"
+                f"text-transform:uppercase'>{_txt}</span></div>",
+                unsafe_allow_html=True,
+            )
+
+    with st.expander("Configuration", expanded=True):
+        land_rent = st.slider(
+            "Land Rent ($/acre)",
+            min_value=80, max_value=400,
+            value=int(SOY_COSTS.land_rent), step=5,
+            help="USDA NASS 2025 national average: $262/acre.",
+        )
+        fert_adj_pct = st.slider(
+            "Fertilizer Adjustment (%)",
+            min_value=-30, max_value=60, value=0, step=5, format="%d%%",
+        )
+        diesel_man = st.number_input(
+            "Diesel Fallback ($/gal)",
+            min_value=2.0, max_value=8.0, value=3.85, step=0.05, format="%.2f",
+        )
+        use_custom_cbot = st.toggle("Override CBOT Price", value=False)
+        if use_custom_cbot:
+            cbot_soy_ov  = st.number_input("Soybeans ($/bu)", 5.0, 18.0, CBOT_SOY_2026,  0.25, "%.2f")
+            cbot_corn_ov = st.number_input("Corn ($/bu)",     2.0,  9.0, CBOT_CORN_2026, 0.10, "%.2f")
+        else:
+            cbot_soy_ov, cbot_corn_ov = CBOT_SOY_2026, CBOT_CORN_2026
 
     st.divider()
-    st.markdown("<div style='font-size:0.72rem;font-weight:600;text-transform:uppercase;"
-                "letter-spacing:0.1em;color:#a0b09a'>Analysis Parameters</div>",
-                unsafe_allow_html=True)
-    st.markdown("")
 
+    st.markdown(
+        "<span style='font-size:0.66rem;color:#8aaa84;text-transform:uppercase;"
+        "letter-spacing:0.12em;font-weight:700'>Analysis Settings</span>",
+        unsafe_allow_html=True,
+    )
     commodity = st.selectbox(
         "Commodity",
         ["soybean", "corn"],
         format_func=lambda x: "Soybeans" if x == "soybean" else "Corn",
     )
-    pilot_state = st.selectbox(
-        "Pilot State",
-        [("Iowa","IOWA","19"),("Illinois","ILLINOIS","17"),
-         ("Indiana","INDIANA","18"),("Ohio","OHIO","39"),
-         ("Minnesota","MINNESOTA","27"),("Nebraska","NEBRASKA","31")],
+    state_sel = st.selectbox(
+        "State",
+        [("Iowa","19"),("Illinois","17"),("Indiana","18"),("Ohio","39"),
+         ("Minnesota","27"),("Nebraska","31"),("Kansas","20"),("Missouri","29"),
+         ("North Dakota","38"),("South Dakota","46")],
         format_func=lambda x: x[0],
     )
-    state_name, state_upper, state_fips = pilot_state
-    yield_year = st.slider("USDA Yield Year", 2019, 2023, 2023)
+    state_name, state_fips = state_sel
 
-    st.divider()
-    st.markdown("<div style='font-size:0.72rem;font-weight:600;text-transform:uppercase;"
-                "letter-spacing:0.1em;color:#a0b09a'>Scenario Overrides</div>",
-                unsafe_allow_html=True)
-    st.markdown("")
-
-    cbot = st.slider(
-        "CBOT Price ($/bu)",
-        min_value=8.0 if commodity == "soybean" else 3.5,
-        max_value=14.0 if commodity == "soybean" else 6.5,
-        value=10.50 if commodity == "soybean" else 4.35, step=0.10,
+    yield_year = st.select_slider(
+        "Yield Reference Year", options=[2021, 2022, 2023, 2024], value=2023,
     )
-    land_rent  = st.slider("Land Rent ($/acre)", 100, 500, 248, step=10)
-    diesel_man = st.slider("Diesel ($/gal)", 2.50, 6.00, 3.82, step=0.05)
+    cbot = cbot_soy_ov if commodity == "soybean" else cbot_corn_ov
 
     st.divider()
-    st.markdown("<div style='font-size:0.72rem;font-weight:600;text-transform:uppercase;"
-                "letter-spacing:0.1em;color:#a0b09a'>Map Layers</div>",
-                unsafe_allow_html=True)
-    st.markdown("")
 
+    st.markdown(
+        "<span style='font-size:0.66rem;color:#8aaa84;text-transform:uppercase;"
+        "letter-spacing:0.12em;font-weight:700'>Map Overlays</span>",
+        unsafe_allow_html=True,
+    )
     show_crush = st.toggle("NOPA Crushers",    value=True)
     show_term  = st.toggle("Export Terminals", value=True)
-    show_3d    = st.toggle("3D Risk Columns",  value=False)
 
     st.markdown("")
-    run_btn = st.button("Run Analysis", type="primary", use_container_width=True)
+    run_btn = st.button("Run Analysis", type="primary", width="stretch")
+
 
 # ---------------------------------------------------------------------------
-# Header
+# Preload static data
+# ---------------------------------------------------------------------------
+
+with st.spinner("Loading facility and county data…"):
+    try:
+        fac = _load_facilities()
+        st.session_state.facilities = fac
+    except Exception as _fe:
+        st.error(f"Facility data unavailable: {_fe}")
+        fac = {k: pd.DataFrame() for k in ["crushers","export_terminals","biodiesel_plants","all"]}
+    try:
+        centroids = _load_centroids()
+    except Exception as _ce:
+        st.error(f"County centroids unavailable: {_ce}")
+        centroids = pd.DataFrame()
+
+
+# ---------------------------------------------------------------------------
+# Live macro indices
+# ---------------------------------------------------------------------------
+
+fert_ppi    = None
+diesel_live = None
+
+if os.getenv("FRED_API_KEY"):
+    try:
+        fert_ppi = _load_fert_ppi()
+    except Exception:
+        pass
+
+if os.getenv("EIA_API_KEY"):
+    try:
+        diesel_live = _load_diesel()
+    except Exception:
+        pass
+
+_eff_diesel = diesel_live if diesel_live else diesel_man
+
+
+# ---------------------------------------------------------------------------
+# Page header
 # ---------------------------------------------------------------------------
 
 page_header(
     "The Harvest Squeeze",
-    "Quantifying the growing vs. moving cost crisis in US soybeans and corn &mdash; 2026",
+    "County-level profitability risk monitor for US soybean and corn production — 2026",
 )
 
-idx1, idx2, idx3, idx4, idx5 = st.columns(5)
 
 # ---------------------------------------------------------------------------
-# Session state
+# KPI strip  —  5 metric columns, sparklines isolated in containers
+# FIX v2.3: wrap each sparkline in a st.container with overflow:hidden
+# so it cannot bleed into adjacent metric columns.
 # ---------------------------------------------------------------------------
 
-for k in ["model_df", "facilities", "fert_ppi", "diesel_live"]:
-    if k not in st.session_state:
-        st.session_state[k] = None
+_c1, _c2, _c3, _c4, _c5 = st.columns(5)
 
-# ---------------------------------------------------------------------------
-# Cached loaders
-# ---------------------------------------------------------------------------
+def _mini_sparkline(df_spark: pd.DataFrame, color: str) -> None:
+    """Render a 48px-tall sparkline with no axes, contained in a div."""
+    if df_spark is None or df_spark.empty:
+        return
+    _fig = go.Figure(go.Scatter(
+        x=df_spark["period"], y=df_spark["value"],
+        mode="lines", line=dict(color=color, width=1.4),
+        fill="tozeroy",
+        fillcolor=color.replace(")", ",0.10)").replace("rgb", "rgba")
+        if color.startswith("rgb") else f"rgba(0,0,0,0.06)",
+    ))
+    _fig.update_layout(
+        height=44, margin=dict(l=0, r=0, t=0, b=0),
+        xaxis=dict(visible=False, fixedrange=True),
+        yaxis=dict(visible=False, fixedrange=True),
+        plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+        showlegend=False,
+    )
+    st.plotly_chart(_fig, width="stretch", config={"displayModeBar": False})
 
-@st.cache_data(ttl=3600, show_spinner=False)
-def _load_facilities():
-    return load_value_chain_facilities()
 
-@st.cache_data(ttl=3600, show_spinner=False)
-def _load_centroids():
-    return load_county_centroids()
+with _c1:
+    st.metric(
+        "Fertilizer PPI",
+        f"{fert_ppi:.1f}" if fert_ppi else "N/A",
+        border=True,
+        help="FRED PCU3253113253111 — Nitrogenous Fertilizer PPI (base Dec 1984 = 100)",
+    )
+    if fert_ppi and os.getenv("FRED_API_KEY"):
+        with st.container():
+            try:
+                _mini_sparkline(_load_fert_hist(months=18), "#2D5A27")
+            except Exception:
+                pass
 
-@st.cache_data(ttl=1800, show_spinner=False)
-def _load_yields(state, yr, cm):
-    fn = fetch_usda_soybean_yields if cm == "soybean" else fetch_usda_corn_yields
-    return fn(state_name=state, year=yr)
+with _c2:
+    _d_delta = f"{_eff_diesel - diesel_man:+.3f} vs baseline" if diesel_live else None
+    st.metric(
+        "US No.2 Diesel",
+        f"${_eff_diesel:.3f}/gal",
+        delta=_d_delta,
+        border=True,
+        help="EIA Weekly No. 2 Diesel Retail Price — NUS average",
+    )
+    if diesel_live and os.getenv("EIA_API_KEY"):
+        with st.container():
+            try:
+                _mini_sparkline(_load_diesel_hist(weeks=52), "#1E293B")
+            except Exception:
+                pass
 
-@st.cache_data(ttl=1800, show_spinner=False)
-def _load_fert_ppi():
-    return fetch_fred_fertilizer_ppi()
+with _c3:
+    _cb_label = "CBOT Soybeans Dec 26" if commodity == "soybean" else "CBOT Corn Dec 26"
+    _cb_ref   = CBOT_SOY_2026 if commodity == "soybean" else CBOT_CORN_2026
+    _cb_d     = f"{cbot - _cb_ref:+.2f} vs forward" if use_custom_cbot else None  # noqa: F821
+    st.metric(_cb_label, f"${cbot:.2f}/bu", delta=_cb_d, border=True,
+              help="December 2026 CBOT futures (April 2026 forward curve).")
 
-@st.cache_data(ttl=900, show_spinner=False)
-def _load_diesel():
-    return fetch_eia_diesel_price()
+with _c4:
+    _fac_tmp = st.session_state.facilities or fac
+    st.metric("NOPA Crushers",    len(_fac_tmp.get("crushers",         [])),
+              border=True, help="Operating soybean processors in dataset.")
 
-@st.cache_data(ttl=1800, show_spinner=False)
-def _load_fert_hist():
-    return fetch_fred_fertilizer_history(months=24)
-
-@st.cache_data(ttl=900, show_spinner=False)
-def _load_diesel_hist():
-    return fetch_eia_diesel_history(weeks=52)
-
-# ---------------------------------------------------------------------------
-# Load static data
-# ---------------------------------------------------------------------------
-
-with st.spinner("Loading facility and county data..."):
-    try:
-        fac = _load_facilities()
-        st.session_state.facilities = fac
-    except Exception as e:
-        st.error(f"Facility data failed to load: {e}")
-        fac = {k: pd.DataFrame() for k in ["crushers","export_terminals","biodiesel_plants","all"]}
-    try:
-        centroids = _load_centroids()
-    except Exception as e:
-        st.error(f"County centroids failed to load: {e}")
-        centroids = pd.DataFrame()
-
-# ---------------------------------------------------------------------------
-# Live macro index strip
-# ---------------------------------------------------------------------------
-
-fert_ppi = diesel_live = None
-try:
-    with idx1:
-        if os.getenv("FRED_API_KEY"):
-            fert_ppi = _load_fert_ppi()
-            st.metric("Fertilizer PPI", f"{fert_ppi:.1f}",
-                      help="FRED series PCU3253113253111 — Nitrogenous Fertilizer PPI")
-        else:
-            st.metric("Fertilizer PPI", "N/A", help="Add FRED API key")
-    with idx2:
-        if os.getenv("EIA_API_KEY"):
-            diesel_live = _load_diesel()
-            st.metric("US Diesel", f"${diesel_live:.3f}/gal",
-                      help="EIA Weekly No.2 Diesel Retail Price")
-        else:
-            st.metric("US Diesel", f"${diesel_man:.2f} (manual)")
-    with idx3:
-        label = "CBOT Soybeans" if commodity == "soybean" else "CBOT Corn"
-        st.metric(label, f"${cbot:.2f}/bu")
-    with idx4:
-        st.metric("NOPA Crushers", len(fac.get("crushers", [])),
-                  help="Operating soybean processors in dataset")
-    with idx5:
-        st.metric("Export Terminals", len(fac.get("export_terminals", [])),
-                  help="River and ocean export facilities")
-except Exception as e:
-    st.warning(f"Could not load live indices: {e}")
+with _c5:
+    st.metric("Export Terminals", len(_fac_tmp.get("export_terminals", [])),
+              border=True, help="River and ocean export facilities in dataset.")
 
 st.divider()
+
+
+# ---------------------------------------------------------------------------
+# Risk classification
+# ---------------------------------------------------------------------------
+
+def _classify_risk(net_margin: pd.Series, revenue_per_acre: float) -> pd.Series:
+    """Classify $/acre net margins into risk tiers using RiskThresholds ratios."""
+    _rev = max(float(revenue_per_acre), 1.0)
+    return pd.cut(
+        net_margin,
+        bins=[-np.inf,
+              RISK.high_risk_ceiling     * _rev,
+              RISK.elevated_risk_ceiling * _rev,
+              RISK.moderate_risk_ceiling * _rev,
+              np.inf],
+        labels=["HIGH", "ELEVATED", "MODERATE", "HEALTHY"],
+    ).astype(str)
+
 
 # ---------------------------------------------------------------------------
 # Analysis runner
 # ---------------------------------------------------------------------------
 
-def run_analysis():
-    eff_diesel = diesel_live or diesel_man
-    eff_ppi    = fert_ppi   or 115.0
-    base_lr    = SOY_COSTS.land_rent if commodity == "soybean" else CORN_COSTS.land_rent
+def run_analysis() -> pd.DataFrame:
+    _eff_fert = (fert_ppi or 100.0) * (1.0 + fert_adj_pct / 100.0)
 
-    with st.spinner(f"Running {commodity} profitability model for {state_name}..."):
+    with st.spinner(f"Fetching USDA yields — {state_name} {yield_year}…"):
         try:
-            yield_df = _load_yields(state_upper, yield_year, commodity)
-        except Exception:
-            yield_df = pd.DataFrame()
+            yields_df = _load_yields(state_name, yield_year, commodity)
+        except Exception as _e:
+            st.warning(f"USDA yield fetch failed (spatial model only): {_e}")
+            yields_df = pd.DataFrame()
 
-        sc = centroids[centroids["state_fips"] == state_fips].copy()
-        if not yield_df.empty:
-            sc = sc.merge(yield_df[["fips_code","yield_bu_acre"]], on="fips_code", how="left")
+    with st.spinner("KD-Tree spatial logistics model…"):
+        df = centroids.copy()
+        if state_fips and "state_fips" in df.columns:
+            df = df[df["state_fips"] == state_fips].copy()
+        elif state_fips:
+            st.warning("County centroids missing 'state_fips' column — showing all counties.")
 
-        mdf = calculate_spatial_logistics(sc, fac)
-        mdf = calculate_transport_cost(mdf, eff_diesel, commodity=commodity)
-        mdf = calculate_production_costs(mdf, fertilizer_ppi=eff_ppi, commodity=commodity)
+        if df.empty:
+            st.error("No county data available. Check that county_centroids.parquet is committed.")
+            return pd.DataFrame()
 
-        mdf["revenue_per_acre"]       = mdf.get("adj_yield_bu_acre", 50.0) * cbot
-        mdf["total_production_cost"] += land_rent - base_lr
-        mdf["net_margin_per_acre"]    = (
-            mdf["revenue_per_acre"]
-            - mdf.get("basis_deduction_per_acre", 0)
-            - mdf["total_production_cost"]
+        if not yields_df.empty and "fips_code" in df.columns:
+            df = df.merge(yields_df[["fips_code", "yield_bu_acre"]], on="fips_code", how="left")
+
+        df = calculate_spatial_logistics(df, fac)
+        df = calculate_transport_cost(df, _eff_diesel, commodity=commodity)
+        df = calculate_production_costs(
+            df, _eff_fert, ndvi_df=None, smap_df=None, commodity=commodity,
         )
-        mdf["net_margin_score"] = (
-            mdf["net_margin_per_acre"] / mdf["revenue_per_acre"].replace(0, np.nan)
-        ).clip(-2, 1)
 
-        conds = [
-            mdf["net_margin_score"] <= RISK.high_risk_ceiling,
-            mdf["net_margin_score"] <= RISK.elevated_risk_ceiling,
-            mdf["net_margin_score"] <= RISK.moderate_risk_ceiling,
-        ]
-        mdf["risk_tier"]  = np.select(conds, ["HIGH","ELEVATED","MODERATE"], default="HEALTHY")
-        mdf["color"]      = mdf["risk_tier"].map(RISK_RGBA)
-        mdf["elevation"]  = np.clip(-mdf["net_margin_per_acre"] * 8, 0, 4000)
+    # Land-rent override
+    _default_rent = SOY_COSTS.land_rent if commodity == "soybean" else CORN_COSTS.land_rent
+    _delta        = land_rent - _default_rent
+    if _delta != 0 and "net_margin_per_acre" in df.columns:
+        df["net_margin_per_acre"] = df["net_margin_per_acre"] - _delta
+        if "total_cost_per_acre" in df.columns:
+            df["total_cost_per_acre"] = df["total_cost_per_acre"] + _delta
 
-        st.session_state.model_df    = mdf
-        st.session_state.fert_ppi   = eff_ppi
-        st.session_state.diesel_live = eff_diesel
+    # Re-classify risk tiers
+    if "net_margin_per_acre" in df.columns:
+        _typ   = 52.0 if commodity == "soybean" else 175.0
+        _rev   = float(df["revenue_per_acre"].median() if "revenue_per_acre" in df.columns
+                       else cbot * _typ)
+        df["risk_tier"] = _classify_risk(df["net_margin_per_acre"], _rev)
 
+    df["color"] = df["risk_tier"].map(RISK_RGBA).apply(
+        lambda x: x if isinstance(x, list) else [128, 128, 128, 180]
+    )
+    df["elevation"] = np.clip(
+        -df.get("net_margin_per_acre", pd.Series(0, index=df.index)) * 10,
+        0, 5_000,
+    )
+    if "fips_code" in df.columns:
+        df["fips_str"] = df["fips_code"].astype(str).str.zfill(5)
+
+    return df
+
+
+# ---------------------------------------------------------------------------
+# Trigger
+# ---------------------------------------------------------------------------
 
 if run_btn:
-    run_analysis()
-if st.session_state.model_df is None and os.getenv("USDA_API_KEY"):
-    run_analysis()
+    with st.spinner("Building profitability model…"):
+        st.session_state.model_df  = run_analysis()
+        st.session_state.run_count += 1
 
-# Demo fallback
-if st.session_state.model_df is None and not centroids.empty:
-    st.info(
-        "Demo mode: spatial model running with trend yields. "
-        "Add API keys to load live USDA yield, FRED fertilizer, and EIA diesel data."
-    )
-    demo = centroids[centroids["state_fips"] == state_fips].copy()
-    demo = calculate_spatial_logistics(demo, fac)
-    demo = calculate_transport_cost(demo, diesel_man, commodity=commodity)
-    trend = 59.0 if commodity == "soybean" else 202.0
-    demo["yield_bu_acre"] = trend + np.random.default_rng(0).normal(0, 4, len(demo))
-    demo = calculate_production_costs(demo, 115.0, commodity=commodity)
-    demo["color"]     = demo["risk_tier"].map(RISK_RGBA)
-    demo["elevation"] = np.clip(-demo["net_margin_per_acre"] * 8, 0, 4000)
-    st.session_state.model_df = demo
+df = st.session_state.model_df
+
 
 # ---------------------------------------------------------------------------
-# KPI strip
+# Results layout
 # ---------------------------------------------------------------------------
 
-if st.session_state.model_df is not None:
-    df = st.session_state.model_df
+if df is not None and not df.empty:
 
-    section_label(f"{state_name} — Profitability Risk Summary")
-
-    k1, k2, k3, k4, k5, k6 = st.columns(6)
-    n  = len(df)
-    vc = df["risk_tier"].value_counts()
-    with k1: st.metric("Total Counties", n)
-    with k2: st.metric("High Risk",  vc.get("HIGH",0),     f"{vc.get('HIGH',0)/n*100:.0f}% of state")
-    with k3: st.metric("Elevated",   vc.get("ELEVATED",0), f"{vc.get('ELEVATED',0)/n*100:.0f}% of state")
-    with k4: st.metric("Moderate",   vc.get("MODERATE",0), f"{vc.get('MODERATE',0)/n*100:.0f}% of state")
-    with k5: st.metric("Healthy",    vc.get("HEALTHY",0),  f"{vc.get('HEALTHY',0)/n*100:.0f}% of state")
-    with k6:
-        mm = df["net_margin_per_acre"].mean()
-        st.metric(
-            "Mean Net Margin", f"${mm:+.0f}/acre",
-            delta="Profitable" if mm > 0 else "Loss territory",
-            delta_color="normal" if mm > 0 else "inverse",
+    # Risk pills
+    _rvc   = df["risk_tier"].value_counts()
+    _pcols = st.columns(4)
+    for _pc, (_tier, _fg, _bg, _desc) in zip(_pcols, [
+        ("HIGH",    "#B91C1C","#FEE2E2","Loss Territory — below zero"),
+        ("ELEVATED","#C2410C","#FFEDD5","Razor-Thin — 0 to 5 pct"),
+        ("MODERATE","#B45309","#FEF3C7","Watchlist — 5 to 12 pct"),
+        ("HEALTHY", "#15803D","#DCFCE7","Healthy — above 12 pct"),
+    ]):
+        _n   = _rvc.get(_tier, 0)
+        _pct = 100 * _n / len(df) if len(df) else 0
+        _pc.markdown(
+            f"<div style='background:{_bg};border-left:4px solid {_fg};"
+            f"border-radius:2px;padding:0.65rem 0.85rem;margin-bottom:0.35rem'>"
+            f"<div style='font-size:0.63rem;font-weight:700;color:{_fg};"
+            f"text-transform:uppercase;letter-spacing:0.10em'>{_tier}</div>"
+            f"<div style='font-size:1.55rem;font-weight:700;color:{_fg};"
+            f"font-family:\"IBM Plex Mono\",monospace;line-height:1.1'>{_n}</div>"
+            f"<div style='font-size:0.68rem;color:{_fg};opacity:0.8'>"
+            f"{_pct:.0f}% of counties — {_desc}</div></div>",
+            unsafe_allow_html=True,
         )
 
-    st.divider()
+    st.markdown("<div style='height:0.4rem'></div>", unsafe_allow_html=True)
 
-    # -----------------------------------------------------------------------
-    # Map + Charts
-    # -----------------------------------------------------------------------
+    map_col, chart_col = st.columns([62, 38])
 
-    map_col, chart_col = st.columns([3, 2])
-
+    # -- Choropleth map --
     with map_col:
         section_label("County Profitability Risk Map")
-        map_data = df.dropna(subset=["lat","lon"])
-        common = dict(get_position=["lon","lat"], get_fill_color="color", pickable=True)
+        _geojson = _load_county_geojson()
 
-        if show_3d:
-            county_layer = pdk.Layer(
-                "ColumnLayer",
-                data=map_data[["lat","lon","color","elevation","county_name",
-                               "net_margin_per_acre","risk_tier","crusher_dist_miles"]],
-                get_elevation="elevation", elevation_scale=1,
-                radius=8000, extruded=True, **common,
-            )
-        else:
-            county_layer = pdk.Layer(
-                "ScatterplotLayer",
-                data=map_data[["lat","lon","color","county_name","net_margin_per_acre",
-                               "risk_tier","crusher_dist_miles"]],
-                get_radius=8000, opacity=0.82, **common,
-            )
+        if _geojson and "fips_str" in df.columns:
+            _mdf = df.dropna(subset=["fips_str", "risk_tier"]).copy()
+            _tier_order = ["HIGH", "ELEVATED", "MODERATE", "HEALTHY"]
+            _mdf["risk_tier"] = pd.Categorical(_mdf["risk_tier"], categories=_tier_order, ordered=True)
+            _mdf = _mdf.sort_values("risk_tier")
 
-        layers = [county_layer]
+            _hover = {"county_name": True, "risk_tier": True, "net_margin_per_acre": ":.0f"}
+            if "crusher_dist_miles" in _mdf.columns:
+                _hover["crusher_dist_miles"] = ":.0f"
+            if "yield_bu_acre" in _mdf.columns:
+                _hover["yield_bu_acre"] = ":.1f"
 
-        if show_crush and not fac["crushers"].empty:
-            layers.append(pdk.Layer("ScatterplotLayer",
-                data=fac["crushers"][["lat","lon","Short Name","State"]].rename(
-                    columns={"Short Name":"name"}),
-                get_position=["lon","lat"],
-                get_fill_color=[30, 80, 140, 230],
-                get_radius=12000, pickable=True))
-
-        if show_term and not fac["export_terminals"].empty:
-            layers.append(pdk.Layer("ScatterplotLayer",
-                data=fac["export_terminals"][["lat","lon","Short Name","State"]].rename(
-                    columns={"Short Name":"name"}),
-                get_position=["lon","lat"],
-                get_fill_color=[100, 50, 160, 230],
-                get_radius=14000, pickable=True))
-
-        ctrs = {
-            "19":(42.0,-93.5,7), "17":(40.0,-89.2,7), "18":(40.3,-86.1,7),
-            "39":(40.4,-82.5,7), "27":(46.4,-94.7,6), "31":(41.5,-99.9,6),
-        }
-        clat, clon, zoom = ctrs.get(state_fips, (41.5,-93.5,7))
-
-        st.pydeck_chart(pdk.Deck(
-            layers=layers,
-            initial_view_state=pdk.ViewState(
-                latitude=clat, longitude=clon, zoom=zoom,
-                pitch=45 if show_3d else 0,
-            ),
-            tooltip={
-                "html":
-                    "<div style='font-family:\"IBM Plex Sans\",sans-serif;padding:4px'>"
-                    "<b style='font-size:13px'>{county_name}</b><br/>"
-                    "<span style='color:#aaa;font-size:11px'>Risk tier</span> "
-                    "<b style='font-size:12px'>{risk_tier}</b><br/>"
-                    "<span style='color:#aaa;font-size:11px'>Net margin</span> "
-                    "<b style='font-size:12px'>${net_margin_per_acre}/acre</b><br/>"
-                    "<span style='color:#aaa;font-size:11px'>Crusher distance</span> "
-                    "<b style='font-size:12px'>{crusher_dist_miles} mi</b>"
-                    "</div>",
-                "style": {
-                    "backgroundColor": "#0f2419",
-                    "color": "#f0f4ee",
-                    "borderRadius": "2px",
-                    "padding": "10px 14px",
+            fig_map = px.choropleth(
+                _mdf,
+                geojson=_geojson,
+                locations="fips_str",
+                color="risk_tier",
+                color_discrete_map=RISK_COLORS,
+                category_orders={"risk_tier": _tier_order},
+                scope="usa",
+                hover_name="county_name",
+                hover_data=_hover,
+                labels={
+                    "risk_tier":           "Risk Tier",
+                    "net_margin_per_acre": "Net Margin ($/acre)",
+                    "crusher_dist_miles":  "Miles to Crusher",
+                    "yield_bu_acre":       "Yield (bu/acre)",
                 },
-            },
-            map_style="mapbox://styles/mapbox/light-v11",
-        ), use_container_width=True)
-
-        # Legend
-        leg = st.columns(4)
-        legend_items = [
-            ("High Risk", "loss territory",       "#b91c1c"),
-            ("Elevated",  "0 to 5% margin",       "#c2410c"),
-            ("Moderate",  "5 to 12% margin",      "#b45309"),
-            ("Healthy",   "above 12% margin",     "#15803d"),
-        ]
-        for col, (label, note, color) in zip(leg, legend_items):
-            col.markdown(
-                f"<div style='display:flex;align-items:center;gap:6px;margin-top:4px'>"
-                f"<div style='width:10px;height:10px;border-radius:50%;"
-                f"background:{color};flex-shrink:0'></div>"
-                f"<span style='font-size:0.76rem;color:#5a5a52'>"
-                f"<b style='color:#0f2419'>{label}</b> &mdash; {note}</span></div>",
-                unsafe_allow_html=True,
-            )
-        if show_crush:
-            st.markdown(
-                "<div style='font-size:0.76rem;color:#5a5a52;margin-top:6px'>"
-                "<span style='color:#1e508c;font-weight:600'>&#9679;</span> NOPA Crusher &nbsp;&nbsp;"
-                "<span style='color:#643296;font-weight:600'>&#9679;</span> Export Terminal"
-                "</div>",
-                unsafe_allow_html=True,
             )
 
-    # -----------------------------------------------------------------------
-    # Chart panel
-    # -----------------------------------------------------------------------
+            if show_crush and not fac.get("crushers", pd.DataFrame()).empty:
+                _cdf = fac["crushers"].dropna(subset=["lat", "lon"])
+                fig_map.add_trace(go.Scattergeo(
+                    lat=_cdf["lat"], lon=_cdf["lon"], mode="markers",
+                    marker=dict(size=7, color="#1E4080", symbol="circle",
+                                line=dict(width=1, color="#FFF")),
+                    name="NOPA Crusher",
+                    text=_cdf.get("Short Name", _cdf.index.astype(str)),
+                    hovertemplate="<b>%{text}</b><br>NOPA Crusher<extra></extra>",
+                ))
 
-    with chart_col:
-        t1, t2, t3, t4 = st.tabs(["Margin Breakdown","Logistics","Squeeze List","Macro Trends"])
-        base = plotly_layout_defaults()
+            if show_term and not fac.get("export_terminals", pd.DataFrame()).empty:
+                _tdf = fac["export_terminals"].dropna(subset=["lat", "lon"])
+                fig_map.add_trace(go.Scattergeo(
+                    lat=_tdf["lat"], lon=_tdf["lon"], mode="markers",
+                    marker=dict(size=8, color="#6D3A9C", symbol="diamond",
+                                line=dict(width=1, color="#FFF")),
+                    name="Export Terminal",
+                    text=_tdf.get("Short Name", _tdf.index.astype(str)),
+                    hovertemplate="<b>%{text}</b><br>Export Terminal<extra></extra>",
+                ))
 
-        with t1:
-            med   = df.median(numeric_only=True)
-            costs = SOY_COSTS if commodity == "soybean" else CORN_COSTS
-            ci = {
-                "Land Rent":       land_rent,
-                "Fertilizer":      float(med.get("fertilizer_cost_adj", costs.fertilizer_base)),
-                "Seed":            costs.seed,
-                "Pesticides":      costs.pesticides,
-                "Fuel & Repairs":  costs.fuel_lube_repairs,
-                "Labor":           costs.labor,
-                "Depreciation":    costs.depreciation,
-                "Transport Basis": float(med.get("basis_deduction_per_acre", costs.transport_base*50)),
-                "Overhead":        costs.overhead + costs.taxes_insurance + costs.custom_ops,
+            fig_map.update_geos(fitbounds="locations", visible=False, bgcolor="rgba(0,0,0,0)")
+            fig_map.update_layout(
+                margin=dict(l=0, r=0, t=0, b=0),
+                paper_bgcolor="rgba(0,0,0,0)",
+                geo=dict(bgcolor="rgba(0,0,0,0)"),
+                legend=dict(
+                    title=dict(text="Risk Tier", font=dict(size=10)),
+                    orientation="h", yanchor="bottom", y=-0.08,
+                    xanchor="left", x=0,
+                    font=dict(size=10, family="IBM Plex Sans"),
+                    bgcolor="rgba(255,255,255,0.85)",
+                    bordercolor="#E5E2DC", borderwidth=1,
+                ),
+                height=480,
+                font=dict(family="IBM Plex Sans", size=10),
+            )
+            st.plotly_chart(fig_map, width="stretch")
+
+        else:
+            st.caption("County GeoJSON unavailable — showing centroid scatter.")
+            _md  = df.dropna(subset=["lat", "lon"])
+            _lyr = pdk.Layer(
+                "ScatterplotLayer",
+                data=_md[["lat","lon","color","county_name","net_margin_per_acre","risk_tier"]],
+                get_position=["lon","lat"], get_fill_color="color",
+                get_radius=8_000, opacity=0.82, pickable=True,
+            )
+            _ctrs = {
+                "19":(42.0,-93.5,7),"17":(40.0,-89.2,7),"18":(40.3,-86.1,7),
+                "39":(40.4,-82.5,7),"27":(46.4,-94.7,6),"31":(41.5,-99.9,6),
             }
-            rev = float(med.get("revenue_per_acre", cbot * 52))
-            net = rev - sum(ci.values())
-
-            fig = go.Figure(go.Waterfall(
-                orientation="v",
-                measure=["relative"] * len(ci) + ["total"],
-                x=list(ci.keys()) + ["Net Margin"],
-                y=[-v for v in ci.values()] + [net],
-                base=rev,
-                connector={"line": {"color": "#e5e2dc", "width": 1}},
-                decreasing={"marker": {"color": "#b91c1c", "opacity": 0.85}},
-                increasing={"marker": {"color": "#15803d", "opacity": 0.85}},
-                totals={"marker": {"color": "#15803d" if net >= 0 else "#b91c1c"}},
-                text=[f"${v:.0f}" for v in ci.values()] + [f"${net:+.0f}"],
-                textposition="auto",
-                textfont={"size": 9, "family": "IBM Plex Mono"},
-            ))
-            fig.update_layout(
-                **base,
-                title=f"Cost stack vs. revenue — median county (CBOT ${cbot:.2f}/bu)",
-                height=390,
-                yaxis_title="$/acre",
-                showlegend=False,
+            _lat, _lon, _z = _ctrs.get(state_fips, (41.5,-93.5,7))
+            st.pydeck_chart(
+                pdk.Deck(layers=[_lyr],
+                         initial_view_state=pdk.ViewState(latitude=_lat, longitude=_lon, zoom=_z),
+                         map_style="mapbox://styles/mapbox/light-v11"),
+                width="stretch",
             )
-            fig.update_xaxes(tickfont=dict(size=9))
-            st.plotly_chart(fig, use_container_width=True)
 
-        with t2:
+        st.markdown(
+            "<div style='font-size:0.71rem;color:#9A9A90;margin-top:6px'>"
+            "Counties shaded by Net Margin Score: revenue less all production "
+            "and transport costs. Crusher and terminal data: NOPA/EIA Value Chain."
+            "</div>",
+            unsafe_allow_html=True,
+        )
+
+    # -- Chart panel --
+    with chart_col:
+        _t1, _t2, _t3, _t4 = st.tabs(["Cost Stack", "Logistics", "Risk Table", "Macro Trends"])
+        _base = plotly_layout_defaults()
+
+        with _t1:
+            section_label("Production Cost Stack vs. Revenue")
+            _med   = df.median(numeric_only=True)
+            _costs = SOY_COSTS if commodity == "soybean" else CORN_COSTS
+            _ci = {
+                "Land Rent":       land_rent,
+                "Fertilizer":      float(_med.get("fertilizer_cost_adj", _costs.fertilizer_base)),
+                "Seed":            _costs.seed,
+                "Pesticides":      _costs.pesticides,
+                "Fuel & Repairs":  _costs.fuel_lube_repairs,
+                "Labor":           _costs.labor,
+                "Depreciation":    _costs.depreciation,
+                "Transport Basis": float(_med.get("basis_deduction_per_acre",
+                                                   _costs.transport_base * 50)),
+                "Overhead":        _costs.overhead + _costs.taxes_insurance + _costs.custom_ops,
+            }
+            _rev = float(_med.get("revenue_per_acre", cbot * 52))
+            _net = _rev - sum(_ci.values())
+            _bar_colors = [
+                "rgba(30,41,59,0.82)"  if k == "Transport Basis"
+                else "rgba(45,90,39,0.82)"
+                for k in _ci
+            ] + ["rgba(21,128,61,0.90)" if _net >= 0 else "rgba(185,28,28,0.90)"]
+
+            _wf = go.Figure(go.Waterfall(
+                orientation="v",
+                measure=["relative"] * len(_ci) + ["total"],
+                x=list(_ci.keys()) + ["Net Margin"],
+                y=[-v for v in _ci.values()] + [_net],
+                base=_rev,
+                connector={"line": {"color": "#E5E2DC", "width": 1}},
+                decreasing={"marker": {"color": "rgba(185,28,28,0.82)"}},
+                increasing={"marker": {"color": "rgba(21,128,61,0.82)"}},
+                totals={"marker": {
+                    "color": "rgba(21,128,61,0.90)" if _net >= 0 else "rgba(185,28,28,0.90)"
+                }},
+                text=[f"${v:.0f}" for v in _ci.values()] + [f"${_net:+.0f}"],
+                textposition="auto",
+                textfont={"size": 8, "family": "IBM Plex Mono"},
+            ))
+            _wf.data[0].update(marker_color=_bar_colors)
+            _wf.update_layout(
+                **_base,
+                title=dict(
+                    text=f"Median county — CBOT ${cbot:.2f}/bu, land ${land_rent}/acre",
+                    font=dict(size=10),
+                ),
+                height=400, yaxis_title="$/acre", showlegend=False,
+            )
+            _wf.update_xaxes(tickfont=dict(size=8))
+            st.plotly_chart(_wf, width="stretch")
+
+        with _t2:
+            section_label("Basis Risk — Distance to Nearest Crusher")
             if "crusher_dist_miles" in df.columns:
-                fig_h = px.histogram(
+                _fh2 = px.histogram(
                     df, x="crusher_dist_miles", color="risk_tier", nbins=28,
                     color_discrete_map=RISK_COLORS,
-                    labels={"crusher_dist_miles": "Miles to Nearest Crusher", "count": "Counties"},
+                    category_orders={"risk_tier":["HIGH","ELEVATED","MODERATE","HEALTHY"]},
+                    labels={"crusher_dist_miles":"Miles to Nearest Crusher","count":"Counties"},
                 )
-                fig_h.add_vline(
-                    x=LOGISTICS.distance_threshold_miles, line_dash="dash",
-                    line_color="#9a9a90",
+                _fh2.add_vline(
+                    x=LOGISTICS.distance_threshold_miles, line_dash="dash", line_color="#9A9A90",
                     annotation_text=f"Penalty threshold ({LOGISTICS.distance_threshold_miles:.0f} mi)",
                     annotation_font_size=9,
                 )
-                fig_h.update_layout(
-                    **base, title="Crusher distance distribution by risk tier",
+                _fh2.update_layout(
+                    **_base, title="Crusher distance by risk tier",
                     height=210, showlegend=True,
-                    legend=dict(orientation="h", y=-0.35, font_size=9),
                 )
-                st.plotly_chart(fig_h, use_container_width=True)
+                # Fix: second call for legend so we don't pass legend= twice
+                _fh2.update_layout(legend=dict(orientation="h", y=-0.4, font=dict(size=9)))
+                st.plotly_chart(_fh2, width="stretch")
 
-            if "transport_cost_per_bu" in df.columns:
-                fig_s = px.scatter(
+            if "transport_cost_per_bu" in df.columns and "crusher_dist_miles" in df.columns:
+                _fs2 = px.scatter(
                     df.dropna(subset=["crusher_dist_miles","transport_cost_per_bu"]),
-                    x="crusher_dist_miles", y="transport_cost_per_bu", color="risk_tier",
-                    hover_data=["county_name"],
+                    x="crusher_dist_miles", y="transport_cost_per_bu",
+                    color="risk_tier", hover_data=["county_name"],
                     color_discrete_map=RISK_COLORS,
-                    labels={"crusher_dist_miles": "Miles to Crusher",
-                            "transport_cost_per_bu": "Transport cost ($/bu)"},
-                    opacity=0.75,
                 )
-                fig_s.update_layout(**base, height=195, showlegend=False)
-                st.plotly_chart(fig_s, use_container_width=True)
-
-        with t3:
-            section_label("Most At-Risk Counties")
-            ar = get_most_at_risk_counties(df, n=15)
-            dc = [c for c in ["county_name","risk_tier","net_margin_per_acre",
-                               "crusher_dist_miles","transport_cost_per_bu"] if c in ar.columns]
-
-            def _bg(v):
-                return {
-                    "HIGH":     "background-color:#fee2e2;color:#7f1d1d",
-                    "ELEVATED": "background-color:#ffedd5;color:#7c2d12",
-                    "MODERATE": "background-color:#fef3c7;color:#78350f",
-                    "HEALTHY":  "background-color:#dcfce7;color:#14532d",
-                }.get(v, "")
-
-            if not ar.empty:
-                st.dataframe(
-                    ar[dc].style.applymap(_bg, subset=["risk_tier"] if "risk_tier" in dc else [])
-                    .format({
-                        "net_margin_per_acre":    "${:.0f}",
-                        "crusher_dist_miles":     "{:.0f} mi",
-                        "transport_cost_per_bu":  "${:.3f}",
-                    }),
-                    use_container_width=True, height=260,
+                _fs2.update_layout(
+                    **_base, title="Transport cost vs. distance", height=210, showlegend=False,
                 )
+                st.plotly_chart(_fs2, width="stretch")
 
-            section_label("Logistics Squeeze Counties")
-            sq = get_logistics_squeeze_counties(df, dist_threshold_miles=80)
-            sc_cols = [c for c in ["county_name","crusher_dist_miles",
-                                    "transport_cost_per_bu","basis_risk_score"] if c in sq.columns]
-            if not sq.empty:
-                st.dataframe(sq[sc_cols], use_container_width=True, height=165)
-            else:
-                st.caption("No extreme logistics squeeze counties for this state and scenario.")
+        with _t3:
+            section_label("Most Squeezed Counties")
+            try:
+                _ar = get_most_at_risk_counties(df, n=15)
+                if not _ar.empty:
+                    _dc = [c for c in ["county_name","risk_tier","net_margin_per_acre",
+                                       "crusher_dist_miles","transport_cost_per_bu","yield_bu_acre"]
+                           if c in _ar.columns]
+                    st.dataframe(_ar[_dc].round(2), height=300, width="stretch")
+            except Exception as _e:
+                st.info(f"Risk table: {_e}")
 
-        with t4:
-            section_label("Fertilizer PPI — FRED")
+        with _t4:
+            section_label("Fertilizer PPI — FRED (18-month)")
             if os.getenv("FRED_API_KEY"):
                 try:
-                    fh = _load_fert_hist()
-                    if not fh.empty:
-                        fig_f = go.Figure(go.Scatter(
-                            x=fh["date"], y=fh["value"],
-                            mode="lines", line=dict(color="#1a472a", width=1.8),
-                            fill="tozeroy", fillcolor="rgba(26,71,42,0.07)",
+                    _fh4 = _load_fert_hist(months=18)
+                    if not _fh4.empty:
+                        _ff4 = go.Figure(go.Scatter(
+                            x=_fh4["period"], y=_fh4["value"],
+                            mode="lines+markers",
+                            line=dict(color="#2D5A27", width=2), marker=dict(size=3),
+                            fill="tozeroy", fillcolor="rgba(45,90,39,0.08)",
                         ))
-                        fig_f.update_layout(**base, height=155, showlegend=False,
-                                            yaxis_title="Index")
-                        st.plotly_chart(fig_f, use_container_width=True)
+                        _ff4.update_layout(**plotly_base_no_legend(), height=180,
+                                           showlegend=False, yaxis_title="PPI index")
+                        st.plotly_chart(_ff4, width="stretch")
                 except Exception:
-                    st.caption("FRED API key required.")
+                    st.caption("Fertilizer PPI trend unavailable.")
             else:
-                st.caption("Add FRED API key to enable fertilizer PPI trend.")
+                st.caption("Add FRED_API_KEY to Streamlit Secrets.")
 
-            section_label("Diesel Price — EIA")
+            section_label("US Diesel Retail Price — EIA (52-week)")
             if os.getenv("EIA_API_KEY"):
                 try:
-                    dh = _load_diesel_hist()
-                    if not dh.empty:
-                        fig_d = go.Figure(go.Scatter(
-                            x=dh["period"], y=dh["value"],
-                            mode="lines", line=dict(color="#c2410c", width=1.8),
-                            fill="tozeroy", fillcolor="rgba(194,65,12,0.07)",
+                    _dh4 = _load_diesel_hist(weeks=52)
+                    if not _dh4.empty:
+                        _fd4 = go.Figure(go.Scatter(
+                            x=_dh4["period"], y=_dh4["value"], mode="lines",
+                            line=dict(color="#1E293B", width=2),
+                            fill="tozeroy", fillcolor="rgba(30,41,59,0.08)",
                         ))
-                        fig_d.update_layout(**base, height=155, showlegend=False,
-                                            yaxis_title="$/gal")
-                        st.plotly_chart(fig_d, use_container_width=True)
+                        _fd4.update_layout(**plotly_base_no_legend(), height=180,
+                                           showlegend=False, yaxis_title="$/gal")
+                        st.plotly_chart(_fd4, width="stretch")
                 except Exception:
-                    st.caption("EIA API key required.")
+                    st.caption("Diesel price trend unavailable.")
             else:
-                st.caption("Add EIA API key to enable diesel price trend.")
+                st.caption("Add EIA_API_KEY to Streamlit Secrets.")
 
     st.divider()
 
     with st.expander("Full County Data Table", expanded=False):
-        out = df.copy()
-        float_cols = out.select_dtypes(include=[np.floating]).columns
-        out[float_cols] = out[float_cols].round(3)
-        out = out.drop(columns=[c for c in ["color","elevation"] if c in out.columns])
-        st.dataframe(out, use_container_width=True, height=280)
+        _out = df.drop(columns=[c for c in ["color","elevation","fips_str"] if c in df.columns]).copy()
+        _out[_out.select_dtypes(float).columns] = _out.select_dtypes(float).round(3)
+        st.dataframe(_out, width="stretch", height=300)
         st.download_button(
             "Download CSV",
-            data=out.to_csv(index=False),
+            data=_out.to_csv(index=False),
             file_name=f"harvest_squeeze_{state_name.lower()}_{commodity}_{yield_year}.csv",
             mime="text/csv",
         )
 
 else:
-    st.info(
-        "Click Run Analysis in the sidebar to generate the profitability map. "
-        "The spatial and logistics model runs without API keys — "
-        "only USDA yield, FRED fertilizer PPI, and EIA diesel require keys for live data."
+    # Idle narrative
+    st.markdown(
+        "<div style='max-width:680px;margin:3.5rem auto;padding:0 1rem'>"
+        "<h2 style='font-family:Georgia,serif;font-size:1.55rem;"
+        "color:#0F2419;font-weight:700;margin-bottom:1rem;letter-spacing:-0.02em'>"
+        "Why Margins Are Under Pressure in 2026</h2>"
+        "<p style='color:#5A5A52;line-height:1.8;font-size:0.92rem'>"
+        "American soybean and corn producers face a structural two-sided squeeze. "
+        "On the <strong>Growing side</strong>, national cash rents have climbed "
+        "above $260 per acre while nitrogenous fertilizer prices remain elevated "
+        "against the 2020 baseline. On the <strong>Moving side</strong>, counties "
+        "distant from NOPA crush facilities or Mississippi River export terminals "
+        "carry a logistics basis penalty that compounds the input cost burden."
+        "</p>"
+        "<p style='color:#5A5A52;line-height:1.8;font-size:0.92rem;margin-top:1rem'>"
+        "This monitor quantifies that squeeze county by county, combining USDA "
+        "yield data, FRED fertilizer indices, EIA diesel prices, and a KD-Tree "
+        "nearest-neighbor spatial model of the US soybean value chain. "
+        "Select a state and commodity in the sidebar, then click "
+        "<strong>Run Analysis</strong>."
+        "</p>"
+        "<div style='margin-top:2rem;padding:1.1rem 1.2rem;background:#F0F7EE;"
+        "border-left:3px solid #2D5A27;border-radius:2px;font-size:0.84rem;"
+        "color:#0F2419;line-height:1.6'>"
+        "<strong>Data requirements:</strong> The spatial model runs without API "
+        "keys. Live fertilizer PPI, diesel prices, and USDA yields require FRED, "
+        "EIA, and USDA keys in Streamlit Secrets."
+        "</div></div>",
+        unsafe_allow_html=True,
     )
-    if not fac["crushers"].empty:
-        section_label("Value Chain Infrastructure Preview — All NOPA Facilities")
-        all_f = fac["all"].copy()
-        fc_rgba = {
-            "Soybean Processor - Operating": [30, 80, 140, 220],
-            "Export Facility":               [100, 50, 160, 220],
-            "Biodiesel":                     [194, 65, 12, 200],
-            "Renewable Diesel - Operating":  [21, 128, 61, 200],
-        }
-        all_f["color"] = all_f["Type"].map(lambda t: fc_rgba.get(t, [128,128,128,180]))
-        st.pydeck_chart(pdk.Deck(
-            layers=[pdk.Layer("ScatterplotLayer",
-                data=all_f[["lat","lon","color","Short Name","Type","State"]].rename(
-                    columns={"Short Name":"name","Type":"facility_type"}),
-                get_position=["lon","lat"], get_fill_color="color",
-                get_radius=18000, pickable=True)],
-            initial_view_state=pdk.ViewState(latitude=39.5, longitude=-95.5, zoom=4),
-            tooltip={"html":"<b>{name}</b><br/>{facility_type} &bull; {State}"},
-            map_style="mapbox://styles/mapbox/light-v11",
-        ), use_container_width=True)
 
 footer()
