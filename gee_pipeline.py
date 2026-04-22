@@ -96,22 +96,19 @@ class GEEPipeline:
     # Authentication
     # ------------------------------------------------------------------
 
-    import json
-    import os
-    import ee
 
     def authenticate(self) -> bool:
         try:
-            self._ee = ee
-
             creds_json = os.getenv("GEE_CREDENTIALS_JSON")
 
             if creds_json:
                 creds_dict = json.loads(creds_json)
+
                 credentials = ee.ServiceAccountCredentials(
                     creds_dict["client_email"],
                     key_data=creds_dict["private_key"]
                 )
+
                 ee.Initialize(credentials)
                 logger.info("GEE initialized via JSON credentials")
 
@@ -119,6 +116,7 @@ class GEEPipeline:
                 ee.Initialize()
                 logger.info("GEE initialized locally")
 
+            self._ee = ee
             self._initialized = True
             return True
 
