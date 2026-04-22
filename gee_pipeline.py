@@ -28,7 +28,9 @@ Demo mode:
 import logging
 import time
 from typing import Optional
-
+import json
+import os
+import ee
 import numpy as np
 import pandas as pd
 
