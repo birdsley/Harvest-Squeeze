@@ -99,7 +99,9 @@ class GEEPipeline:
 
     def authenticate(self) -> bool:
         try:
-            creds_json = os.getenv("GEE_CREDENTIALS_JSON")
+            import streamlit as st
+
+            creds_json = st.secrets.get("GEE_CREDENTIALS_JSON", None)
 
             if creds_json:
                 creds_dict = json.loads(creds_json)
@@ -110,11 +112,11 @@ class GEEPipeline:
                 )
 
                 ee.Initialize(credentials)
-                logger.info("GEE initialized via JSON credentials")
+                logger.info("GEE initialized via Streamlit secrets")
 
             else:
                 ee.Initialize()
-                logger.info("GEE initialized locally")
+                logger.warning("GEE initialized WITHOUT credentials (local mode)")
 
             self._ee = ee
             self._initialized = True
