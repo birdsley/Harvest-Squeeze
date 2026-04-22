@@ -94,50 +94,36 @@ class GEEPipeline:
     # Authentication
     # ------------------------------------------------------------------
 
-    def authenticate(
-        self,
-        service_account: Optional[str] = None,
-        key_file: Optional[str] = None,
-    ) -> bool:
+    def authenticate(self) -> bool:
         """
-        Authenticate and initialize the GEE client library.
-
-        Three modes:
-          1. Service account (CI/cloud): provide service_account + key_file.
-          2. Saved credentials (local dev): run ee.Authenticate() once first.
-          3. Application Default Credentials (gcloud CLI).
-
-        Returns True on success, False on failure.
+        Authenticate using environment variables (Streamlit Cloud compatible).
         """
         try:
             import ee
+            import os
             self._ee = ee
-        except ImportError:
-            logger.error(
-                "earthengine-api not installed. Run: pip install earthengine-api"
-            )
-            return False
 
-        try:
-            kwargs = {}
-            if service_account and key_file:
-                kwargs["credentials"] = ee.ServiceAccountCredentials(
-                    service_account, key_file
+            service_account = os.getenv("GEE_SERVICE_ACCOUNT")
+            private_key = os.getenv("GEE_PRIVATE_KEY")
+
+            if service_account and private_key:
+                credentials = ee.ServiceAccountCredentials(
+                    service_account,
+                    key_data=private_key
                 )
-            if self.project_id:
-                kwargs["project"] = self.project_id
+                ee.Initialize(credentials)
+                logger.info("GEE initialized via service account")
 
-            ee.Initialize(**kwargs)
+            else:
+                # fallback for LOCAL ONLY
+                ee.Initialize()
+                logger.info("GEE initialized via default credentials (local)")
+
             self._initialized = True
-            logger.info("GEE initialized (project=%s)", self.project_id or "default")
             return True
 
         except Exception as exc:
-            logger.error(
-                "GEE initialization failed: %s\n"
-                "Run: import ee; ee.Authenticate(); ee.Initialize()",
-                exc,
-            )
+            logger.error(f"GEE initialization failed: {exc}")
             return False
 
     def _require_init(self) -> None:
@@ -422,7 +408,6 @@ class GEEPipeline:
             if sf != "OPTIMAL":
                 parts.append(sf.lower())
             return "; ".join(parts) if parts else "baseline"
-
         df["yield_adj_notes"] = df.apply(_note, axis=1)
         return df[["fips_code","yield_modifier","yield_adj_notes"]].copy()
 
