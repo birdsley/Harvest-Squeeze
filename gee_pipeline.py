@@ -94,36 +94,34 @@ class GEEPipeline:
     # Authentication
     # ------------------------------------------------------------------
 
+    import json
+    import os
+    import ee
+
     def authenticate(self) -> bool:
-        """
-        Authenticate using environment variables (Streamlit Cloud compatible).
-        """
         try:
-            import ee
-            import os
             self._ee = ee
 
-            service_account = os.getenv("GEE_SERVICE_ACCOUNT")
-            private_key = os.getenv("GEE_PRIVATE_KEY")
+            creds_json = os.getenv("GEE_CREDENTIALS_JSON")
 
-            if service_account and private_key:
+            if creds_json:
+                creds_dict = json.loads(creds_json)
                 credentials = ee.ServiceAccountCredentials(
-                    service_account,
-                    key_data=private_key
+                    creds_dict["client_email"],
+                    key_data=creds_dict["private_key"]
                 )
                 ee.Initialize(credentials)
-                logger.info("GEE initialized via service account")
+                logger.info("GEE initialized via JSON credentials")
 
             else:
-                # fallback for LOCAL ONLY
                 ee.Initialize()
-                logger.info("GEE initialized via default credentials (local)")
+                logger.info("GEE initialized locally")
 
             self._initialized = True
             return True
 
-        except Exception as exc:
-            logger.error(f"GEE initialization failed: {exc}")
+        except Exception as e:
+            logger.error(f"GEE initialization failed: {e}")
             return False
 
     def _require_init(self) -> None:
