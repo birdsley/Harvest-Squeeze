@@ -579,11 +579,11 @@ if df is not None and not df.empty:
                 "19":(42.0,-93.5,7),"17":(40.0,-89.2,7),"18":(40.3,-86.1,7),
                 "39":(40.4,-82.5,7),"27":(46.4,-94.7,6),"31":(41.5,-99.9,6),
             }
-            _lat, _lon, _z = _ctrs.get(state_fips, (41.5,-93.5,7))
+            _lat, _lon, _z = _ctrs.get(state_fips, (41.0,-93.0,4.5))
             st.pydeck_chart(
                 pdk.Deck(layers=[_lyr],
                          initial_view_state=pdk.ViewState(latitude=_lat, longitude=_lon, zoom=_z),
-                         map_style="mapbox://styles/mapbox/dark-v11"),
+                         map_style="https://basemaps.cartocdn.com/gl/positron-gl-style/style.json"),
                 width="stretch",
             )
 
@@ -778,5 +778,160 @@ else:
         "</div></div>",
         unsafe_allow_html=True,
     )
+
+# ---------------------------------------------------------------------------
+# My Farm Calculator
+# ---------------------------------------------------------------------------
+
+st.divider()
+
+with st.expander("My Farm Calculator", expanded=False):
+    section_label("Personalized Net Margin Estimate")
+    st.markdown(
+        "<p style='color:#5a5a52;font-size:0.88rem;margin-bottom:1rem'>"
+        "Enter your farm-specific numbers below. The calculator applies the same "
+        "macro assumptions (land rent, fertilizer adjustment, diesel) set in the "
+        "sidebar, then compares your result against the county median from the "
+        "model run above.</p>",
+        unsafe_allow_html=True,
+    )
+
+    _fc_in, _fc_out = st.columns([1, 1])
+
+    with _fc_in:
+        _fc_def_yield = 52.0 if commodity == "soybean" else 180.0
+        _my_yield = st.number_input(
+            "My Expected Yield (Bu/Ac)",
+            min_value=0.0, max_value=300.0,
+            value=_fc_def_yield, step=0.5, format="%.1f",
+            key="fc_yield",
+            help="Enter your farm's expected yield for the selected commodity.",
+        )
+        _my_basis = st.number_input(
+            "My Local Cash Basis ($/Bu)",
+            min_value=-3.00, max_value=1.00,
+            value=-0.45, step=0.05, format="%.2f",
+            key="fc_basis",
+            help="Cash basis relative to CBOT. Typically negative — e.g. -0.45 means your "
+                 "elevator pays CBOT minus $0.45/bu.",
+        )
+        _my_miles = st.number_input(
+            "Miles to Nearest Elevator",
+            min_value=0, max_value=500,
+            value=25, step=1,
+            key="fc_miles",
+            help="Straight-line road miles from your farm to the nearest grain elevator.",
+        )
+
+    # -- Calculation logic --
+    _fc_costs    = SOY_COSTS if commodity == "soybean" else CORN_COSTS
+    _fc_eff_fert = (fert_ppi or 100.0) * (1.0 + fert_adj_pct / 100.0)
+    _fc_fert     = _fc_costs.fertilizer_base * (_fc_eff_fert / 100.0)
+
+    _fc_fixed = (
+        land_rent
+        + _fc_fert
+        + _fc_costs.seed
+        + _fc_costs.pesticides
+        + _fc_costs.fuel_lube_repairs
+        + _fc_costs.custom_ops
+        + _fc_costs.irrigation
+        + _fc_costs.labor
+        + _fc_costs.depreciation
+        + _fc_costs.taxes_insurance
+        + _fc_costs.overhead
+    )
+
+    _fc_revenue = (cbot + _my_basis) * _my_yield
+
+    _fc_diesel_adj = float(np.clip(
+        1 + LOGISTICS.diesel_elasticity * (
+            (_eff_diesel - LOGISTICS.diesel_reference_price)
+            / LOGISTICS.diesel_reference_price
+        ),
+        0.5, 2.5,
+    ))
+    _fc_penalty = (
+        LOGISTICS.distance_penalty_multiplier
+        if _my_miles > LOGISTICS.distance_threshold_miles else 1.0
+    )
+    _fc_transport_bu   = (_my_miles / 100.0) * LOGISTICS.truck_cost_per_100mi * _fc_diesel_adj * _fc_penalty
+    _fc_transport_acre = _fc_transport_bu * _my_yield
+
+    _fc_total_cost  = _fc_fixed + _fc_transport_acre
+    _fc_net_margin  = _fc_revenue - _fc_total_cost
+
+    # Risk tier classification
+    _fc_rev_safe = max(_fc_revenue, 1.0)
+    if _fc_net_margin <= 0:
+        _fc_tier, _fc_color, _fc_bg = "HIGH",     "#B91C1C", "#FEE2E2"
+    elif _fc_net_margin / _fc_rev_safe <= 0.05:
+        _fc_tier, _fc_color, _fc_bg = "ELEVATED", "#C2410C", "#FFEDD5"
+    elif _fc_net_margin / _fc_rev_safe <= 0.12:
+        _fc_tier, _fc_color, _fc_bg = "MODERATE", "#B45309", "#FEF3C7"
+    else:
+        _fc_tier, _fc_color, _fc_bg = "HEALTHY",  "#15803D", "#DCFCE7"
+
+    # County median for comparison
+    _fc_county_avg = None
+    if df is not None and not df.empty and "net_margin_per_acre" in df.columns:
+        _fc_county_avg = float(df["net_margin_per_acre"].median())
+
+    with _fc_out:
+        # Main margin badge
+        st.markdown(
+            f"<div style='background:{_fc_bg};border-left:4px solid {_fc_color};"
+            f"border-radius:2px;padding:0.85rem 1.1rem;margin-bottom:0.7rem'>"
+            f"<div style='font-size:0.62rem;font-weight:700;color:{_fc_color};"
+            f"text-transform:uppercase;letter-spacing:0.12em;margin-bottom:0.25rem'>"
+            f"My Risk Tier &mdash; {_fc_tier}</div>"
+            f"<div style='font-size:2.1rem;font-weight:700;color:{_fc_color};"
+            f"font-family:\"IBM Plex Mono\",monospace;line-height:1.1'>"
+            f"${_fc_net_margin:+.2f} / acre</div>"
+            f"<div style='font-size:0.74rem;color:{_fc_color};opacity:0.80;margin-top:0.15rem'>"
+            f"Net margin after all production &amp; transport costs</div>"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+
+        _fc_m1, _fc_m2 = st.columns(2)
+        with _fc_m1:
+            st.metric("Revenue / Acre",    f"${_fc_revenue:.2f}",
+                      help=f"({cbot:.2f} CBOT + {_my_basis:+.2f} basis) × {_my_yield:.1f} bu")
+        with _fc_m2:
+            st.metric("Total Cost / Acre", f"${_fc_total_cost:.2f}",
+                      help="Fixed production costs + distance-adjusted transport basis")
+
+        if _fc_county_avg is not None:
+            _fc_delta = _fc_net_margin - _fc_county_avg
+            st.metric(
+                "vs. County Median",
+                f"${_fc_county_avg:.2f} / acre",
+                delta=f"${_fc_delta:+.2f} (my farm vs. median)",
+                delta_color="normal",
+            )
+        else:
+            st.caption("Run the analysis to compare against the county median.")
+
+        # Cost breakdown
+        with st.expander("Cost Breakdown", expanded=False):
+            _fc_rows = [
+                ("Land Rent",        land_rent),
+                ("Fertilizer (adj)", _fc_fert),
+                ("Seed",             _fc_costs.seed),
+                ("Pesticides",       _fc_costs.pesticides),
+                ("Fuel & Repairs",   _fc_costs.fuel_lube_repairs),
+                ("Labor",            _fc_costs.labor),
+                ("Depreciation",     _fc_costs.depreciation),
+                ("Irrigation",       _fc_costs.irrigation),
+                ("Overhead & Other", _fc_costs.overhead + _fc_costs.taxes_insurance + _fc_costs.custom_ops),
+                ("Transport Basis",  _fc_transport_acre),
+            ]
+            _fc_df = pd.DataFrame(_fc_rows, columns=["Component", "$/Acre"])
+            _fc_df["$/Acre"] = _fc_df["$/Acre"].round(2)
+            st.dataframe(_fc_df, height=330, width="stretch",
+                         hide_index=True,
+                         column_config={"$/Acre": st.column_config.NumberColumn(format="$%.2f")})
+
 
 footer()

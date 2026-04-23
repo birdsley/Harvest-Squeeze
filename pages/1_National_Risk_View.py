@@ -226,7 +226,15 @@ if st.session_state.natl_df is not None:
                 title="$/acre", thickness=12,
                 tickfont=dict(size=9, family="IBM Plex Mono"),
             ),
-            geo=dict(bgcolor="rgba(0,0,0,0)", lakecolor="#f8f7f4"),
+            geo=dict(
+                bgcolor="rgba(0,0,0,0)",
+                landcolor="#ECEAE5",      # light grey for non-data states
+                subunitcolor="#C8C4BE",   # visible but soft state borders
+                lakecolor="#D6EAF4",
+                showsubunits=True,
+                showlakes=True,
+                showcoastlines=False,
+            ),
         )
         st.plotly_chart(fig_map, width="stretch", config={"displayModeBar": False})
 

@@ -102,7 +102,16 @@ _CSS = """
 }
 #MainMenu { visibility: hidden; }
 footer    { visibility: hidden; }
-header    { visibility: hidden; }
+
+/* ── Header — transparent so the sidebar toggle floats cleanly ─── */
+/* Do NOT use 'header { visibility:hidden }' — that hides the toggle button. */
+[data-testid="stHeader"] {
+  background-color: transparent !important;
+  background:       transparent !important;
+  border-bottom:    none        !important;
+  box-shadow:       none        !important;
+  backdrop-filter:  none        !important;
+}
 
 /* Vertical gap — slightly tightened but not crushed */
 .stVerticalBlock { gap: 0.55rem !important; }

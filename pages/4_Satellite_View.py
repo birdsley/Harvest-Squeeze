@@ -337,7 +337,7 @@ with map_col:
                     "borderRadius":"2px","padding":"10px 14px",
                 },
             },
-            map_style="mapbox://styles/mapbox/dark-v11",
+            map_style="https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
         ), width="stretch")
 
         # NDVI legend

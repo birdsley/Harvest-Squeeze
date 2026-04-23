@@ -115,7 +115,9 @@ class GEEPipeline:
                 logger.info("GEE initialized via Streamlit secrets")
 
             else:
-                ee.Initialize()
+                # IMPORTANT: Replace 'banded-equator-494122-g8' with your actual
+                # Google Cloud Project ID if this fails with "no project found".
+                ee.Initialize(project='banded-equator-494122-g8')
                 logger.warning("GEE initialized WITHOUT credentials (local mode)")
 
             self._ee = ee
