@@ -254,10 +254,10 @@ with k2:
         st.metric("Counties Stressed", "N/A")
 with k3:
     if has_smap:
-        st.metric("Mean Soil Moisture", f"{df['smap_ssm_mean'].mean():.3f} m\u00b3/m\u00b3",
-                  help="NASA SMAP root-zone surface soil moisture")
+        st.metric("Soil Moisture", f"{df['smap_ssm_mean'].mean():.3f} m³/m³",
+                  help="NASA SMAP root-zone surface soil moisture — county mean for selected month")
     else:
-        st.metric("Mean Soil Moisture", "N/A")
+        st.metric("Soil Moisture", "N/A")
 with k4:
     if has_smap:
         drought = df.get("smap_stress_flag","").isin(["DRY_STRESS","SEVERE_DROUGHT"]).mean()*100
@@ -267,11 +267,12 @@ with k4:
 with k5:
     if has_mod:
         avg_mod = df["yield_modifier"].mean()
-        st.metric("Mean Yield Modifier", f"{avg_mod:.3f}x",
+        st.metric("Yield Modifier", f"{avg_mod:.3f}x",
                   delta=f"{(avg_mod-1)*100:+.1f}% vs. trend",
-                  delta_color="normal" if avg_mod >= 1 else "inverse")
+                  delta_color="normal" if avg_mod >= 1 else "inverse",
+                  help="Combined NDVI + SMAP yield modifier applied to trend yield. Values >1.0 indicate above-trend growing conditions.")
     else:
-        st.metric("Mean Yield Modifier", "N/A")
+        st.metric("Yield Modifier", "N/A")
 
 st.divider()
 
@@ -304,9 +305,12 @@ with map_col:
                            "ndvi_z_score","yield_modifier"]].dropna(subset=["lat","lon"]),
             get_position=["lon","lat"],
             get_fill_color="ndvi_color",
+            get_line_color=[255, 255, 255, 60],
+            stroked=True,
+            line_width_min_pixels=1,
             get_radius=8000,
             pickable=True,
-            opacity=0.85,
+            opacity=0.88,
         )
 
         ctrs = {
@@ -333,7 +337,7 @@ with map_col:
                     "borderRadius":"2px","padding":"10px 14px",
                 },
             },
-            map_style="mapbox://styles/mapbox/light-v11",
+            map_style="mapbox://styles/mapbox/dark-v11",
         ), width="stretch")
 
         # NDVI legend
@@ -373,7 +377,7 @@ with chart_col:
                                annotation_text="Healthy (0.70+)",
                                annotation_font_size=9)
             fig_ndvi.update_layout(**base, height=220, showlegend=False)
-            st.plotly_chart(fig_ndvi, width="stretch")
+            st.plotly_chart(fig_ndvi, width="stretch", config={"displayModeBar": False})
 
             if "ndvi_category" in df.columns:
                 cat_vc = df["ndvi_category"].value_counts()
@@ -388,7 +392,7 @@ with chart_col:
                     **base, height=185, showlegend=False,
                     xaxis_title="Number of counties",
                 )
-                st.plotly_chart(fig_cat, width="stretch")
+                st.plotly_chart(fig_cat, width="stretch", config={"displayModeBar": False})
 
     with t2:
         if has_smap:
@@ -402,7 +406,7 @@ with chart_col:
                                line_width=0, annotation_text="Optimal zone",
                                annotation_font_size=9)
             fig_smap.update_layout(**base, height=210, showlegend=False)
-            st.plotly_chart(fig_smap, width="stretch")
+            st.plotly_chart(fig_smap, width="stretch", config={"displayModeBar": False})
 
             if "smap_stress_flag" in df.columns:
                 stress_vc = df["smap_stress_flag"].value_counts()
@@ -424,7 +428,7 @@ with chart_col:
                     **base, height=200, showlegend=False,
                     xaxis_title="Number of counties",
                 )
-                st.plotly_chart(fig_st, width="stretch")
+                st.plotly_chart(fig_st, width="stretch", config={"displayModeBar": False})
 
     with t3:
         if has_mod:
@@ -438,7 +442,7 @@ with chart_col:
                               annotation_text="Trend yield baseline",
                               annotation_font_size=9)
             fig_mod.update_layout(**base, height=195, showlegend=False)
-            st.plotly_chart(fig_mod, width="stretch")
+            st.plotly_chart(fig_mod, width="stretch", config={"displayModeBar": False})
 
             # Scatter: NDVI vs yield modifier
             if has_ndvi:
@@ -456,7 +460,7 @@ with chart_col:
                     **base, height=200,
                     coloraxis_colorbar=dict(title="Net Margin ($/ac)", thickness=10),
                 )
-                st.plotly_chart(fig_nv, width="stretch")
+                st.plotly_chart(fig_nv, width="stretch", config={"displayModeBar": False})
 
 st.divider()
 

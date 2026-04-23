@@ -73,21 +73,15 @@ apply_theme()
 # ---------------------------------------------------------------------------
 
 _pages = [
-    st.Page("pages/1_National_Risk_View.py", title="National Risk View"),
-    st.Page("pages/2_Crop_Progress.py",       title="Crop Progress"),
+    st.Page(lambda: None,                      title="Home",              default=True),
+    st.Page("pages/1_National_Risk_View.py",   title="National Risk View"),
+    st.Page("pages/2_Crop_Progress.py",        title="Crop Progress"),
     st.Page("pages/3_Scenario_Analysis.py",    title="Scenario Analysis"),
-    st.Page("pages/4_Satellite_View.py",       title="Satellite View"),
+    st.Page("pages/4_Satellite_View.py",       title="Satellite Data"),
 ]
 
-# The home page content lives directly in this file (default=True).
-# st.navigation with a callable Page pointing to self isn't needed —
-# we just define the sub-pages and let app.py render the home content.
-pg = st.navigation(
-    {
-        "Home": [st.Page(lambda: None, title="Home", default=True)],
-        "Analysis": _pages,
-    }
-)
+# Flat navigation — no section grouping so Home appears inline with the other pages.
+pg = st.navigation(_pages)
 
 # Run the selected page; if it's the lambda (Home), we fall through to
 # the home content below.  Any other selection renders that page file.
@@ -156,18 +150,6 @@ def _load_county_geojson():
 # ---------------------------------------------------------------------------
 
 with st.sidebar:
-    st.markdown(
-        "<div style='padding:1.4rem 0 0.5rem'>"
-        "<span style='font-family:Georgia,serif;font-size:1.05rem;"
-        "font-weight:700;color:#f0f4ee;letter-spacing:-0.01em'>"
-        "The Harvest Squeeze</span><br/>"
-        "<span style='font-size:0.66rem;color:#6b8f74;"
-        "text-transform:uppercase;letter-spacing:0.12em'>"
-        "Profitability Risk Monitor &bull; 2026</span></div>",
-        unsafe_allow_html=True,
-    )
-    st.divider()
-
     with st.expander("API Key Status", expanded=False):
         for _env, _label in [
             ("USDA_API_KEY", "USDA NASS QuickStats"),
@@ -186,7 +168,7 @@ with st.sidebar:
                 unsafe_allow_html=True,
             )
 
-    with st.expander("Configuration", expanded=True):
+    with st.expander("MACRO ASSUMPTIONS", expanded=True):
         land_rent = st.slider(
             "Land Rent ($/acre)",
             min_value=80, max_value=400,
@@ -211,8 +193,9 @@ with st.sidebar:
     st.divider()
 
     st.markdown(
-        "<span style='font-size:0.66rem;color:#8aaa84;text-transform:uppercase;"
-        "letter-spacing:0.12em;font-weight:700'>Analysis Settings</span>",
+        "<div style='font-size:0.92rem;color:#E2E8F0;font-weight:700;"
+        "font-family:\"Inter\",\"IBM Plex Sans\",sans-serif;"
+        "letter-spacing:0.03em;margin:0.4rem 0 0.6rem'>Analysis Target</div>",
         unsafe_allow_html=True,
     )
     commodity = st.selectbox(
@@ -237,8 +220,9 @@ with st.sidebar:
     st.divider()
 
     st.markdown(
-        "<span style='font-size:0.66rem;color:#8aaa84;text-transform:uppercase;"
-        "letter-spacing:0.12em;font-weight:700'>Map Overlays</span>",
+        "<div style='font-size:0.92rem;color:#E2E8F0;font-weight:700;"
+        "font-family:\"Inter\",\"IBM Plex Sans\",sans-serif;"
+        "letter-spacing:0.03em;margin:0.4rem 0 0.6rem'>Map Overlays</div>",
         unsafe_allow_html=True,
     )
     show_crush = st.toggle("NOPA Crushers",    value=True)
@@ -296,6 +280,7 @@ page_header(
     "The Harvest Squeeze",
     "County-level profitability risk monitor for US soybean and corn production — 2026",
 )
+st.markdown("<div style='margin-bottom:0.9rem'></div>", unsafe_allow_html=True)
 
 
 # ---------------------------------------------------------------------------
@@ -358,11 +343,13 @@ with _c2:
                 pass
 
 with _c3:
-    _cb_label = "CBOT Soybeans Dec 26" if commodity == "soybean" else "CBOT Corn Dec 26"
+    _cb_label = "Soybeans Dec 26" if commodity == "soybean" else "Corn Dec 26"
+    _cb_help  = ("CBOT December 2026 Soybean futures (April 2026 forward curve)."
+                 if commodity == "soybean"
+                 else "CBOT December 2026 Corn futures (April 2026 forward curve).")
     _cb_ref   = CBOT_SOY_2026 if commodity == "soybean" else CBOT_CORN_2026
     _cb_d     = f"{cbot - _cb_ref:+.2f} vs forward" if use_custom_cbot else None  # noqa: F821
-    st.metric(_cb_label, f"${cbot:.2f}/bu", delta=_cb_d, border=True,
-              help="December 2026 CBOT futures (April 2026 forward curve).")
+    st.metric(_cb_label, f"${cbot:.2f}/bu", delta=_cb_d, border=True, help=_cb_help)
 
 with _c4:
     _fac_tmp = st.session_state.facilities or fac
@@ -574,7 +561,7 @@ if df is not None and not df.empty:
                 height=480,
                 font=dict(family="IBM Plex Sans", size=10),
             )
-            st.plotly_chart(fig_map, width="stretch")
+            st.plotly_chart(fig_map, width="stretch", config={"displayModeBar": False})
 
         else:
             st.caption("County GeoJSON unavailable — showing centroid scatter.")
@@ -583,7 +570,10 @@ if df is not None and not df.empty:
                 "ScatterplotLayer",
                 data=_md[["lat","lon","color","county_name","net_margin_per_acre","risk_tier"]],
                 get_position=["lon","lat"], get_fill_color="color",
-                get_radius=8_000, opacity=0.82, pickable=True,
+                get_line_color=[255, 255, 255, 60],
+                stroked=True,
+                line_width_min_pixels=1,
+                get_radius=8_000, opacity=0.88, pickable=True,
             )
             _ctrs = {
                 "19":(42.0,-93.5,7),"17":(40.0,-89.2,7),"18":(40.3,-86.1,7),
@@ -593,7 +583,7 @@ if df is not None and not df.empty:
             st.pydeck_chart(
                 pdk.Deck(layers=[_lyr],
                          initial_view_state=pdk.ViewState(latitude=_lat, longitude=_lon, zoom=_z),
-                         map_style="mapbox://styles/mapbox/light-v11"),
+                         map_style="mapbox://styles/mapbox/dark-v11"),
                 width="stretch",
             )
 
@@ -660,7 +650,7 @@ if df is not None and not df.empty:
                 height=400, yaxis_title="$/acre", showlegend=False,
             )
             _wf.update_xaxes(tickfont=dict(size=8))
-            st.plotly_chart(_wf, width="stretch")
+            st.plotly_chart(_wf, width="stretch", config={"displayModeBar": False})
 
         with _t2:
             section_label("Basis Risk — Distance to Nearest Crusher")
@@ -680,9 +670,7 @@ if df is not None and not df.empty:
                     **_base, title="Crusher distance by risk tier",
                     height=210, showlegend=True,
                 )
-                # Fix: second call for legend so we don't pass legend= twice
-                _fh2.update_layout(legend=dict(orientation="h", y=-0.4, font=dict(size=9)))
-                st.plotly_chart(_fh2, width="stretch")
+                st.plotly_chart(_fh2, width="stretch", config={"displayModeBar": False})
 
             if "transport_cost_per_bu" in df.columns and "crusher_dist_miles" in df.columns:
                 _fs2 = px.scatter(
@@ -694,7 +682,7 @@ if df is not None and not df.empty:
                 _fs2.update_layout(
                     **_base, title="Transport cost vs. distance", height=210, showlegend=False,
                 )
-                st.plotly_chart(_fs2, width="stretch")
+                st.plotly_chart(_fs2, width="stretch", config={"displayModeBar": False})
 
         with _t3:
             section_label("Most Squeezed Counties")
@@ -722,7 +710,7 @@ if df is not None and not df.empty:
                         ))
                         _ff4.update_layout(**plotly_base_no_legend(), height=180,
                                            showlegend=False, yaxis_title="PPI index")
-                        st.plotly_chart(_ff4, width="stretch")
+                        st.plotly_chart(_ff4, width="stretch", config={"displayModeBar": False})
                 except Exception:
                     st.caption("Fertilizer PPI trend unavailable.")
             else:
@@ -740,7 +728,7 @@ if df is not None and not df.empty:
                         ))
                         _fd4.update_layout(**plotly_base_no_legend(), height=180,
                                            showlegend=False, yaxis_title="$/gal")
-                        st.plotly_chart(_fd4, width="stretch")
+                        st.plotly_chart(_fd4, width="stretch", config={"displayModeBar": False})
                 except Exception:
                     st.caption("Diesel price trend unavailable.")
             else:

@@ -75,7 +75,7 @@ RISK_RGBA: Dict[str, list] = {
 # ---------------------------------------------------------------------------
 
 _CSS = """
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=IBM+Plex+Sans:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
 
 /* ── Design tokens ─────────────────────────────────────────────────── */
 :root {
@@ -88,21 +88,29 @@ _CSS = """
   --border:    #E5E2DC;
   --slate:     #5A5A52;
   --slate-lt:  #9A9A90;
-  --font-sans:  'IBM Plex Sans', 'Helvetica Neue', system-ui, sans-serif;
+  --font-sans:  'Inter', 'IBM Plex Sans', 'Helvetica Neue', system-ui, sans-serif;
   --font-mono:  'IBM Plex Mono', 'Courier New', monospace;
   --font-serif: Georgia, 'Times New Roman', serif;
 }
 
-/* ── App shell ─────────────────────────────────────────────────────── */
+/* ── App shell — maximum density ───────────────────────────────── */
 .stApp { background-color: var(--parchment); font-family: var(--font-sans); }
 .block-container {
-  padding-top: 1.6rem !important;
-  padding-bottom: 3rem !important;
+  padding-top: 1.5rem !important;
+  padding-bottom: 1.2rem !important;
   max-width: 1500px !important;
 }
 #MainMenu { visibility: hidden; }
 footer    { visibility: hidden; }
 header    { visibility: hidden; }
+
+/* Vertical gap — slightly tightened but not crushed */
+.stVerticalBlock { gap: 0.55rem !important; }
+[data-testid="stVerticalBlock"] > [data-testid="stVerticalBlock"] {
+  gap: 0.4rem !important;
+}
+/* Horizontal column gaps */
+[data-testid="stHorizontalBlock"] { gap: 0.75rem !important; }
 
 /* ── Body typography ───────────────────────────────────────────────── */
 h1, h2, h3 {
@@ -161,18 +169,26 @@ p, li {
 }
 
 /* ── Sidebar number input ──────────────────────────────────────────── */
+/* Use a solid dark background — rgba values can be overridden by
+   Streamlit's base theme, causing white-on-white. #1C3828 matches the
+   sidebar's dark green palette and gives clear contrast for light text. */
 [data-testid="stSidebar"] input[type="number"],
 [data-testid="stSidebar"] input[type="text"],
 [data-testid="stSidebar"] .stNumberInput input {
   color: #EDF3EB !important;
-  background-color: rgba(255,255,255,0.08) !important;
-  border-color: rgba(255,255,255,0.15) !important;
+  -webkit-text-fill-color: #EDF3EB !important;
+  background: #1C3828 !important;
+  background-color: #1C3828 !important;
+  border: 1px solid rgba(255,255,255,0.18) !important;
+  border-radius: 4px !important;
   font-family: var(--font-mono) !important;
   font-size: 0.84rem !important;
+  caret-color: #EDF3EB !important;
 }
 [data-testid="stSidebar"] .stNumberInput button {
   color: #8AAA84 !important;
-  background-color: rgba(255,255,255,0.06) !important;
+  background-color: #1C3828 !important;
+  border-color: rgba(255,255,255,0.12) !important;
 }
 
 /* ── Sidebar toggle label ──────────────────────────────────────────── */
@@ -244,32 +260,60 @@ p, li {
   background-color: var(--gold) !important;
 }
 
-/* ── Metric cards ──────────────────────────────────────────────────── */
+/* ── Metric cards — tight institutional style ──────────────────────── */
 [data-testid="stMetric"] {
   background: var(--white) !important;
   border: 1px solid var(--border) !important;
-  border-top: 3px solid var(--growing) !important;
+  border-top: 2px solid var(--growing) !important;
   border-radius: 2px !important;
-  padding: 0.85rem 1.0rem 0.7rem !important;
+  padding: 0.5rem 0.75rem 0.4rem !important;
+  height: auto !important;
+  overflow: visible !important;
 }
 [data-testid="stMetricLabel"] {
   font-family: var(--font-sans) !important;
-  font-size: 0.65rem !important;
+  font-size: 0.70rem !important;
   font-weight: 700 !important;
   text-transform: uppercase !important;
-  letter-spacing: 0.11em !important;
-  color: var(--slate-lt) !important;
+  letter-spacing: 0.05em !important;
+  color: var(--slate) !important;
+  white-space: normal !important;
+  overflow: visible !important;
+  overflow-wrap: break-word !important;
+  word-break: break-word !important;
+  text-overflow: clip !important;
+  line-height: 1.3 !important;
+  height: auto !important;
+}
+/* Allow label's inner elements to wrap too */
+[data-testid="stMetricLabel"] p,
+[data-testid="stMetricLabel"] div,
+[data-testid="stMetricLabel"] span {
+  white-space: normal !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+  overflow-wrap: break-word !important;
 }
 [data-testid="stMetricValue"] {
   font-family: var(--font-mono) !important;
-  font-size: 1.25rem !important;
+  font-size: 1.10rem !important;
   font-weight: 500 !important;
   color: var(--ink) !important;
-  line-height: 1.2;
+  line-height: 1.1 !important;
 }
 [data-testid="stMetricDelta"] {
   font-family: var(--font-mono) !important;
-  font-size: 0.70rem !important;
+  font-size: 0.68rem !important;
+  line-height: 1.2 !important;
+}
+/* Terminal financial delta colors */
+[data-testid="stMetricDelta"].positive,
+[data-testid="stMetricDelta"][class*="positive"] {
+  color: #10B981 !important;
+}
+[data-testid="stMetricDelta"].negative,
+[data-testid="stMetricDelta"][class*="negative"] {
+  color: #FF3B30 !important;
 }
 
 /* ── Tabs ──────────────────────────────────────────────────────────── */
@@ -296,12 +340,21 @@ p, li {
   border-bottom-color: var(--growing) !important;
 }
 
-/* ── DataFrames ────────────────────────────────────────────────────── */
+/* ── DataFrames — condensed monospace ──────────────────────────────── */
 [data-testid="stDataFrame"] {
   border: 1px solid var(--border) !important;
   border-radius: 2px !important;
-  font-family: var(--font-mono) !important;
-  font-size: 0.77rem !important;
+  font-family: 'IBM Plex Mono', 'Roboto Mono', 'Courier New', monospace !important;
+  font-size: 0.75rem !important;
+}
+/* Column headers */
+[data-testid="stDataFrame"] th,
+[data-testid="stDataFrame"] [data-testid="glideDataEditor"] .dvn-stack {
+  font-family: var(--font-sans) !important;
+  font-size: 0.67rem !important;
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.05em !important;
 }
 
 /* ── Divider ───────────────────────────────────────────────────────── */
@@ -333,14 +386,15 @@ hr {
   font-weight: 700;
   color: var(--ink);
   letter-spacing: -0.025em;
-  line-height: 1.15;
-  margin-bottom: 0.2rem;
+  line-height: 1.2;
+  margin-bottom: 0.45rem;
 }
 .hs-page-subtitle {
   font-family: var(--font-sans);
   font-size: 0.87rem;
   color: var(--slate);
-  margin-bottom: 0.1rem;
+  margin-bottom: 0.35rem;
+  line-height: 1.5;
 }
 .hs-section-label {
   font-family: var(--font-sans);
@@ -380,37 +434,100 @@ hr {
 
 /* ── Navigation sidebar page links ────────────────────────────────── */
 [data-testid="stSidebarNav"] a,
-[data-testid="stSidebarNav"] span {
+[data-testid="stSidebarNav"] span,
+[data-testid="stSidebarNav"] li,
+[data-testid="stSidebarNav"] p,
+[data-testid="stSidebarNav"] div {
   font-family: var(--font-sans) !important;
   font-size: 0.84rem !important;
-  color: #C8D5C0 !important;
+  color: #E2E8F0 !important;
 }
-[data-testid="stSidebarNav"] a:hover { color: #EDF3EB !important; }
+[data-testid="stSidebarNav"] a:hover,
+[data-testid="stSidebarNav"] a:hover span {
+  color: #F8FAFC !important;
+}
 [data-testid="stSidebarNav"] [aria-current="page"],
-[data-testid="stSidebarNav"] [aria-selected="true"] {
+[data-testid="stSidebarNav"] [aria-current="page"] span,
+[data-testid="stSidebarNav"] [aria-selected="true"],
+[data-testid="stSidebarNav"] [aria-selected="true"] span {
   color: var(--gold) !important;
   font-weight: 600 !important;
 }
 
-/* ── HIGH-CONTRAST SIDEBAR TEXT (v2.4 patch) ───────────────────── */
-[data-testid="stSidebar"] label,
+/* ── HIGH-CONTRAST SIDEBAR TEXT (v2.5) ────────────────────────── */
+/* Target only text-bearing elements — NOT * which breaks icon fonts.
+   Streamlit expanders use Material Symbols glyphs; overriding font-family
+   on their span/svg containers renders the glyph as literal text ("arrow_right"). */
+[data-testid="stSidebar"] p,
 [data-testid="stSidebar"] .stMarkdown p,
-[data-testid="stSidebar"] .stMarkdown span,
+[data-testid="stSidebar"] .stMarkdown div,
+[data-testid="stSidebar"] [data-testid="stSidebarContent"] div:not([class*="material"]):not([data-testid*="icon"]) {
+  color: #F8FAFC;
+  font-family: var(--font-sans);
+}
+/* Section labels (widget labels) — muted uppercase tone */
+[data-testid="stSidebar"] label,
+[data-testid="stSidebar"] .stSlider label,
+[data-testid="stSidebar"] .stSelectbox label,
+[data-testid="stSidebar"] .stNumberInput label,
+[data-testid="stSidebar"] .stToggle label,
+[data-testid="stSidebar"] .stMultiSelect label,
 [data-testid="stSidebar"] [data-testid="stWidgetLabel"] p {
-  color: #E2E8F0 !important;
+  color: #94A3B8 !important;
   font-family: var(--font-sans) !important;
 }
-[data-testid="stSidebar"] [data-testid="stMetricLabel"] {
-  color: #CBD5E1 !important;
-}
+/* Input values, select values, slider tick marks — full brightness */
 [data-testid="stSidebar"] [data-baseweb="select"] span,
-[data-testid="stSidebar"] input {
-  color: #F8FAFC !important;
-}
+[data-testid="stSidebar"] [data-baseweb="select"] div[class*="singleValue"],
+[data-testid="stSidebar"] input,
+[data-testid="stSidebar"] .stNumberInput input,
 [data-testid="stSidebar"] [data-testid="stSlider"] [data-testid="stTickBarMin"],
 [data-testid="stSidebar"] [data-testid="stSlider"] [data-testid="stTickBarMax"],
 [data-testid="stSidebar"] [data-testid="stSlider"] [data-testid="stThumbValue"] {
-  color: #E2E8F0 !important;
+  color: #F8FAFC !important;
+  -webkit-text-fill-color: #F8FAFC !important;
+  font-family: var(--font-sans) !important;
+}
+/* Expander summary — only the text node, not the icon span */
+[data-testid="stSidebar"] [data-testid="stExpander"] summary p,
+[data-testid="stSidebar"] [data-testid="stExpander"] [data-testid="stExpanderToggleIcon"] + p {
+  color: #94A3B8 !important;
+  font-family: var(--font-sans) !important;
+}
+/* Expander body text */
+[data-testid="stSidebar"] [data-testid="stExpander"] .stMarkdown p {
+  color: #CBD5E1 !important;
+  font-size: 0.80rem !important;
+  font-family: var(--font-sans) !important;
+}
+
+/* ── Brand header above nav links ─────────────────────────────── */
+/* Title: injected via ::before on the nav container itself        */
+[data-testid="stSidebarNav"]::before {
+  content: "The Harvest Squeeze";
+  display: block;
+  font-family: Georgia, 'Times New Roman', serif !important;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #F0F4EE !important;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+  padding: 0.55rem 0.9rem 0.1rem;
+}
+/* Subtitle: injected once, on the nav's <ul> child only.
+   Avoid > div::before / nav::before — those match multiple children
+   and cause the subtitle to repeat for each section.              */
+[data-testid="stSidebarNav"] > ul::before {
+  content: "PROFITABILITY RISK MONITOR \\B7 2026";
+  display: block;
+  font-family: 'Inter', 'IBM Plex Sans', sans-serif !important;
+  font-size: 0.62rem;
+  font-weight: 600;
+  color: #6B8F74 !important;
+  letter-spacing: 0.12em;
+  padding: 0.15rem 0.9rem 0.65rem;
+  border-bottom: 1px solid #1F3A2A;
+  margin-bottom: 0.2rem;
 }
 """
 
@@ -453,30 +570,44 @@ def footer() -> None:
 
 def plotly_layout_defaults() -> dict:
     """
-    Base Plotly layout dict consistent with the Harvest Squeeze theme.
+    Base Plotly layout dict — Harvest Squeeze dark theme.
 
-    IMPORTANT: This dict contains a 'legend' key.  When using **base to
-    unpack into fig.update_layout(), do NOT also pass an explicit legend=
-    argument in the same call — Python raises a TypeError for duplicate
-    keyword arguments.
+    Uses template='plotly_dark' for professional chart styling with fully
+    transparent backgrounds so charts sit cleanly on the app background.
 
-    Instead, either:
-      a) Call update_layout(**base, ...) with no legend= kwarg, then call
-         fig.update_layout(legend=dict(...)) in a second call.
-      b) Filter the key out: {k:v for k,v in base.items() if k != 'legend'}
+    Axis grid styles use Plotly dot-notation keys (xaxis_gridcolor, etc.)
+    rather than nested dict keys (xaxis=dict(...)) so callers can safely
+    pass explicit xaxis=dict(...) in the same update_layout() call without
+    triggering a duplicate-keyword TypeError.
+
+    Contains a 'legend' key — strip it before passing an explicit legend=
+    kwarg in the same update_layout() call, or use plotly_base_no_legend().
     """
     return dict(
-        font=dict(family="IBM Plex Sans, Helvetica Neue, system-ui", size=11, color="#5A5A52"),
-        plot_bgcolor="#FFFFFF",
+        template="plotly_dark",
+        font=dict(family="IBM Plex Sans, Helvetica Neue, system-ui", size=10, color="#A0AEC0"),
+        plot_bgcolor="rgba(0,0,0,0)",
         paper_bgcolor="rgba(0,0,0,0)",
-        margin=dict(l=8, r=8, t=40, b=8),
-        title_font=dict(family="IBM Plex Sans", size=11, color="#0F2419"),
+        margin=dict(l=10, r=10, t=30, b=10),
+        title_font=dict(family="IBM Plex Sans", size=10, color="#E2E8F0"),
         legend=dict(
-            bgcolor="rgba(0,0,0,0)", bordercolor="#E5E2DC",
-            borderwidth=1, font=dict(size=10),
+            yanchor="top", y=0.99, xanchor="left", x=0.01,
+            bgcolor="rgba(15,36,25,0.70)",
+            bordercolor="rgba(255,255,255,0.08)",
+            borderwidth=1,
+            font=dict(size=9, color="#A0AEC0"),
         ),
-        xaxis=dict(gridcolor="#E5E2DC", showgrid=True, zeroline=False, gridwidth=0.5),
-        yaxis=dict(gridcolor="#E5E2DC", showgrid=True, zeroline=False, gridwidth=0.5),
+        # Dot-notation axis styles — safe to combine with explicit xaxis=/yaxis= kwargs
+        xaxis_gridcolor="#222222",
+        xaxis_showgrid=True,
+        xaxis_zeroline=False,
+        xaxis_gridwidth=0.5,
+        xaxis_color="#A0AEC0",
+        yaxis_gridcolor="#222222",
+        yaxis_showgrid=True,
+        yaxis_zeroline=False,
+        yaxis_gridwidth=0.5,
+        yaxis_color="#A0AEC0",
         colorway=[
             "#2D5A27", "#1E293B", "#C8A951",
             "#B91C1C", "#C2410C", "#15803D",

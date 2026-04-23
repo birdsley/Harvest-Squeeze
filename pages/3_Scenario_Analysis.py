@@ -92,7 +92,7 @@ with st.sidebar:
     ppi_vol    = st.slider("Fert PPI vol (+-pts)", 5.0, 40.0, 15.0, step=5.0,  key="sc_pv")
 
     st.markdown("")
-    run_btn = st.button("Run Scenario Suite", type="primary", use_container_width=True)
+    run_btn = st.button("Run Scenario Suite", type="primary", width="stretch")
 
 # ---------------------------------------------------------------------------
 # Cached model
@@ -234,16 +234,17 @@ with t1:
         y=torn["Input"], x=torn["High ($)"], orientation="h",
         name="Upside", marker_color="#15803d", base=0,
         text=torn["High_abs"].map(lambda v: f"${v:+.0f}"),
-        textposition="outside", textfont=dict(size=9, family="IBM Plex Mono"),
+        textposition="outside", textfont=dict(size=9, family="IBM Plex Mono", color="#0F5A1E"),
     ))
     fig_t.add_trace(go.Bar(
         y=torn["Input"], x=torn["Low ($)"], orientation="h",
         name="Downside", marker_color="#b91c1c", base=0,
         text=torn["Low_abs"].map(lambda v: f"${v:+.0f}"),
-        textposition="outside", textfont=dict(size=9, family="IBM Plex Mono"),
+        textposition="outside", textfont=dict(size=9, family="IBM Plex Mono", color="#7F1D1D"),
     ))
     fig_t.add_vline(x=0, line_width=1.5, line_color="#0f2419")
-    # v2.4 FIX: strip margin AND legend from base to avoid duplicate kwarg TypeError
+    # v2.4 FIX: strip margin and legend from base to avoid duplicate kwarg TypeError
+    # xaxis/yaxis no longer conflict — plotly_layout_defaults() now uses dot-notation
     _base_clean = {k: v for k, v in base.items() if k not in ("margin", "legend")}
     fig_t.update_layout(
         **_base_clean,
@@ -363,7 +364,7 @@ with t3:
         q50       = be_df["breakeven_cbot"].quantile(0.50)
         st.metric("Median BE CBOT",   f"${q50:.2f}/bu", help="Median breakeven CBOT price across all counties")
         st.metric("75th Percentile",   f"${q75:.2f}/bu", help="75th percentile breakeven — 25% of counties need higher prices")
-        st.metric("Already Underwater", f"{pct_under:.1f}%", help="Pct of counties whose breakeven exceeds current CBOT")
+        st.metric("Underwater", f"{pct_under:.1f}%", help="Share of counties whose breakeven CBOT price exceeds the current market price — already unprofitable")
 
         st.markdown("<br/>", unsafe_allow_html=True)
         section_label("Worst Breakeven Counties")

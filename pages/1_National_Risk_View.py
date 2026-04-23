@@ -74,7 +74,7 @@ with st.sidebar:
     )
     land_rent  = st.slider("Land Rent ($/acre)",  100,  500, 248, step=10,   key="natl_lr")
     diesel_man = st.slider("Diesel ($/gal)",      2.50, 6.00, 3.82, step=0.05, key="natl_d")
-    run_btn    = st.button("Run National Scan", type="primary", use_container_width=True)
+    run_btn    = st.button("Run National Scan", type="primary", width="stretch")
 
 STATES = [
     ("Iowa","19"), ("Illinois","17"), ("Indiana","18"),
@@ -180,9 +180,9 @@ if st.session_state.natl_df is not None:
 
     k1,k2,k3,k4,k5,k6 = st.columns(6)
     k1.metric("Counties Modeled",    n)
-    k2.metric("High Risk (6-St.)", f"{pct_high:.1f}%",  help="Share of counties in loss territory across all six states")
-    k3.metric("Elevated (6-St.)",  f"{pct_elev:.1f}%",  help="Share of counties with razor-thin margins (NMS 0-5%)")
-    k4.metric("Healthy (6-St.)",   f"{pct_hlthy:.1f}%", help="Share of counties with healthy margins (NMS > 12%)")
+    k2.metric("High Risk",  f"{pct_high:.1f}%",  help="6-state share of counties in loss territory (net margin < 0)")
+    k3.metric("Elevated",   f"{pct_elev:.1f}%",  help="6-state share of counties with razor-thin margins (NMS 0–5%)")
+    k4.metric("Healthy",    f"{pct_hlthy:.1f}%", help="6-state share of counties with healthy margins (NMS > 12%)")
     k5.metric("Most At-Risk",       worst,               help="State with lowest mean Net Margin Score")
     k6.metric("Strongest State",     best,                help="State with highest mean Net Margin Score")
     st.divider()
@@ -252,12 +252,9 @@ if st.session_state.natl_df is not None:
             category_orders={"tier": risk_order},
             labels={"pct": "% of counties", "state": "", "tier": "Risk Tier"},
         )
-        # v2.4 FIX: strip legend from base to avoid duplicate kwarg TypeError
-        _base_no_legend = {k: v for k, v in base.items() if k != "legend"}
         fig_bar.update_layout(
-            **_base_no_legend, height=400, barmode="stack",
+            **base, height=400, barmode="stack",
             xaxis=dict(range=[0,100], ticksuffix="%"),
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0, font_size=9),
         )
         st.plotly_chart(fig_bar, width="stretch", config={"displayModeBar": False})
 
@@ -285,12 +282,7 @@ if st.session_state.natl_df is not None:
         annotation_text=f"Distance penalty >{LOGISTICS.distance_threshold_miles:.0f} mi",
         annotation_font_size=9,
     )
-    # v2.4 FIX: strip legend from base to avoid duplicate kwarg TypeError
-    _base_no_legend = {k: v for k, v in base.items() if k != "legend"}
-    fig_sc.update_layout(
-        **_base_no_legend, height=360,
-        legend=dict(orientation="h", yanchor="top", y=-0.18, font_size=9),
-    )
+    fig_sc.update_layout(**base, height=360)
     st.plotly_chart(fig_sc, width="stretch", config={"displayModeBar": False})
 
     st.divider()

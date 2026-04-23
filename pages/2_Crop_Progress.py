@@ -153,9 +153,9 @@ if cond_df is not None and not cond_df.empty:
     k1, k2, k3, k4, k5 = st.columns(5)
     with k1:
         cci_val = snap.get("cci")
-        st.metric("CCI — Latest Week",
+        st.metric("Latest CCI",
                   f"{cci_val:.1f} / 100" if cci_val else "N/A",
-                  help="Crop Condition Index: EXCELLENT=100, VERY POOR=0")
+                  help="Crop Condition Index (0–100). EXCELLENT=100, VERY POOR=0. Score ≥65 is bullish, ≤45 is bearish.")
     with k2:
         st.metric("Good + Excellent", f"{snap.get('pct_good_excellent',0):.0f}%")
     with k3:
@@ -203,14 +203,11 @@ with left_col:
                         annotation_position="bottom right", annotation_font_size=9,
                     )     
             fig_p.update_layout(
-                **{k: v for k, v in base.items() if k != "legend"},
+                **base,
                 height=310,
                 yaxis=dict(range=[0, 105], ticksuffix="%"),
             )
-            fig_p.update_layout(
-                legend=dict(orientation="h", y=-0.32, font=dict(size=9))
-            )
-            st.plotly_chart(fig_p, width="stretch")
+            st.plotly_chart(fig_p, width="stretch", config={"displayModeBar": False})
 
     # CCI trend
     if cci_df is not None and not cci_df.empty:
@@ -238,14 +235,11 @@ with left_col:
         fig_cci.add_hline(y=62, line_dash="dot", line_color="#c8c4be",
                           annotation_text="Historical avg ~62", annotation_font_size=8)
         fig_cci.update_layout(
-            **{k: v for k, v in base.items() if k != "legend"},
+            **base,
             height=310,
             yaxis=dict(range=[0, 105], ticksuffix="%"),
         )
-        fig_cci.update_layout(
-            legend=dict(orientation="h", y=-0.32, font=dict(size=9))
-        )
-        st.plotly_chart(fig_cci, width="stretch")
+        st.plotly_chart(fig_cci, width="stretch", config={"displayModeBar": False})
 
 with right_col:
     # Condition breakdown — horizontal bar
@@ -275,7 +269,7 @@ with right_col:
             **base, height=255, showlegend=False,
             xaxis=dict(range=[0,65], ticksuffix="%"),
         )
-        st.plotly_chart(fig_cd, width="stretch")
+        st.plotly_chart(fig_cd, width="stretch", config={"displayModeBar": False})
 
     # Multi-state planting pace
     multi_df = st.session_state.cp_multi_df
@@ -294,14 +288,11 @@ with right_col:
                          annotation_text=f"Avg benchmark: {avg_bench:.0f}%",
                          annotation_font_size=8)
         fig_ms.update_layout(
-            **{k: v for k, v in base.items() if k != "legend"},
+            **base,
             height=310,
             yaxis=dict(range=[0, 105], ticksuffix="%"),
         )
-        fig_ms.update_layout(
-            legend=dict(orientation="h", y=-0.32, font=dict(size=9))
-        )
-        st.plotly_chart(fig_ms, width="stretch")
+        st.plotly_chart(fig_ms, width="stretch", config={"displayModeBar": False})
 
         # Pace score table
         section_label("Planting Pace vs. 5-Year Average")
@@ -373,6 +364,6 @@ fig_mod.update_layout(
     yaxis=dict(title="Yield modifier (x)", range=[0.82, 1.15], tickformat=".0%"),
     showlegend=False,
 )
-st.plotly_chart(fig_mod, width="stretch")
+st.plotly_chart(fig_mod, width="stretch", config={"displayModeBar": False})
 
 footer()
