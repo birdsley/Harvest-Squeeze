@@ -312,7 +312,8 @@ def calculate_production_costs(
     Key calibration notes (2026):
     - CBOT soybean December 2026 futures: ~$9.50/bu
     - CBOT corn December 2026 futures:    ~$4.35/bu
-    - Fertilizer PPI base (Jan 2020) = 100; current ~115 = +15% input cost
+    - Fertilizer PPI base (Jan 2020) = 424 (PCU325311325311, Dec 1979=100 series);
+      current ~488 = +15% input cost above Jan 2020 baseline
     - Iowa land rent avg (2025): ~$270/acre
     - National avg land rent: ~$262/acre
 
@@ -334,7 +335,10 @@ def calculate_production_costs(
     pd.DataFrame
         Input enriched with cost, margin, and risk classification columns.
     """
-    FERTILIZER_PPI_BASE = 100.0
+    # PCU325311325311 is indexed to Dec 1979 = 100; its Jan 2020 value was ~424.
+    # Dividing by this rebases the index so a current reading of ~488 yields a
+    # ratio of ~1.15 (+15% above Jan 2020 baseline), matching design intent.
+    FERTILIZER_PPI_BASE = 424.0
 
     df    = county_df.copy()
     costs = SOY_COSTS if commodity == "soybean" else CORN_COSTS
@@ -606,7 +610,7 @@ if __name__ == "__main__":
 
     iowa = calculate_spatial_logistics(iowa, facilities)
     iowa = calculate_transport_cost(iowa, 3.82)
-    iowa = calculate_production_costs(iowa, 115.0, commodity="soybean")
+    iowa = calculate_production_costs(iowa, 488.0, commodity="soybean")  # ~Jan 2026 PCU325311325311 value
 
     vc = iowa["risk_tier"].value_counts()
     print("\nRisk distribution (Iowa, demo yields, $9.50 CBOT):")

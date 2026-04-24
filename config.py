@@ -26,7 +26,7 @@ CBOT_CORN_2026: float = 4.35
 # State-level cash rent ($/acre) — USDA NASS 2025 averages
 # Used to override the national baseline when state-specific data is available
 STATE_LAND_RENTS: Dict[str, float] = {
-    "19": 248.0,   # Iowa
+    "19": 270.0,   # Iowa  — USDA NASS 2024/2025 ~$265-280/acre; $248 was old national avg
     "17": 238.0,   # Illinois
     "18": 195.0,   # Indiana
     "39": 185.0,   # Ohio

@@ -108,9 +108,14 @@ def _run_state(fips, diesel, ppi, cm, cb, lr):
     df = calculate_transport_cost(df, diesel, commodity=cm)
     df = calculate_production_costs(df, fertilizer_ppi=ppi, commodity=cm)
 
+    # Replace the state-specific land rent already applied in calculate_production_costs()
+    # with the slider value. Using "land_rent_used" (set by that function) avoids
+    # double-counting: the old code subtracted from the national baseline (~$262) while
+    # state-specific rents (e.g. Iowa=$270) were already embedded in total_production_cost.
     base_lr = SOY_COSTS.land_rent if cm == "soybean" else CORN_COSTS.land_rent
-    df["revenue_per_acre"]       = df.get("adj_yield_bu_acre", 50.0) * cb
-    df["total_production_cost"] += lr - base_lr
+    applied_lr = df["land_rent_used"] if "land_rent_used" in df.columns else base_lr
+    df["revenue_per_acre"]       = df["adj_yield_bu_acre"] * cb
+    df["total_production_cost"] += lr - applied_lr
     df["net_margin_per_acre"]    = (
         df["revenue_per_acre"]
         - df.get("basis_deduction_per_acre", 0)
@@ -273,16 +278,17 @@ if st.session_state.natl_df is not None:
     fig_sc = px.scatter(
         ndf.dropna(subset=["crusher_dist_miles","net_margin_per_acre"]),
         x="crusher_dist_miles", y="net_margin_per_acre",
-        color="risk_tier", symbol="state_label",
+        color="risk_tier",
         hover_data=["county_name","state_label"],
         color_discrete_map=RISK_COLORS,
         labels={
-            "crusher_dist_miles":    "Miles to Nearest Crusher",
-            "net_margin_per_acre":   "Net Margin ($/acre)",
-            "state_label":           "State",
+            "crusher_dist_miles":  "Miles to Nearest Crusher",
+            "net_margin_per_acre": "Net Margin ($/acre)",
+            "risk_tier":           "Risk Tier",
         },
         opacity=0.72,
     )
+    fig_sc.update_traces(marker=dict(symbol="circle", size=7))
     fig_sc.add_hline(y=0, line_dash="dash", line_color="#9a9a90",
                      annotation_text="Break-even", annotation_font_size=9)
     fig_sc.add_vline(
